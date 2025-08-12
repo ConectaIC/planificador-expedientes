@@ -1,0 +1,1 @@
+Sube a Vercel, configura variables Supabase, crea tablas con supabase_schema.sql, rutas /expedientes y /partes.

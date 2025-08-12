@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function Page(){return(<main style={{padding:24}}><h1>Planificador de Expedientes</h1><p>Versión inicial</p><nav style={{marginTop:16,display:'flex',gap:16}}><Link href='/expedientes'>Expedientes</Link><Link href='/partes'>Partes</Link></nav></main>);}
