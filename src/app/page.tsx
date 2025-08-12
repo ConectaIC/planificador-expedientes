@@ -1,56 +1,44 @@
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
+'use client';
+import { useMemo, useState } from 'react';
 
-function fmt(d?: string | null) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(+dt)) return '—';
-  return dt.toLocaleDateString('es-ES');
-}
+export default function PartesPage() {
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-export default async function ExpedientesPage() {
-  const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from('expedientes')
-    .select('*')
-    .order('fin', { ascending: true });
+  const hoy = useMemo(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); // fecha local
+    return d.toISOString().slice(0, 10);
+  }, []);
 
-  if (error) {
-    return (
-      <main>
-        <h2>Expedientes</h2>
-        <p>Error al cargar: {error.message}</p>
-      </main>
-    );
+  async function onSubmit(e: any) {
+    e.preventDefault();
+    setSaving(true); setMsg(null);
+    const form = new FormData(e.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    const res = await fetch('/api/partes', { method: 'POST', body: JSON.stringify(payload) });
+    const j = await res.json();
+    setSaving(false);
+    setMsg(j.ok ? '✔ Parte guardado' : 'Error: ' + j.error);
+    if (j.ok) (e.target as HTMLFormElement).reset();
   }
 
   return (
     <main>
-      <h2>Expedientes</h2>
-      <p>Total: {data?.length ?? 0}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Proyecto</th>
-            <th>Cliente</th>
-            <th>Fin</th>
-            <th>Prioridad</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data?.map((e: any) => (
-            <tr key={e.id}>
-              <td><strong>{e.codigo}</strong></td>
-              <td>{e.proyecto}</td>
-              <td>{e.cliente ?? '—'}</td>
-              <td>{fmt(e.fin)}</td>
-              <td>{e.prioridad ?? '—'}</td>
-              <td>{e.estado ?? '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <h2>Imputación de horas</h2>
+      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 480 }}>
+        <label>Fecha <input type="date" name="fecha" defaultValue={hoy} required /></label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <label>Inicio <input type="time" name="inicio" /></label>
+          <label>Fin <input type="time" name="fin" /></label>
+        </div>
+        <label>Horas <input type="number" name="horas" step="0.25" min="0" placeholder="Ej. 1.5" /></label>
+        <label>Expediente <input name="expediente" placeholder="25.201ATG" required /></label>
+        <label>Comentario <input name="comentario" placeholder="Descripción breve" /></label>
+        <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar'}</button>
+        {msg && <p>{msg}</p>}
+      </form>
     </main>
   );
 }
+
