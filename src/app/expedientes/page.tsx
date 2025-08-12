@@ -1,22 +1,14 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import FiltrosExpedientes, { Expediente } from '../../components/FiltrosExpedientes';
 import NuevoExpediente from '../../components/NuevoExpediente';
-
-function fmt(d?: string | null) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(+dt)) return '—';
-  return dt.toLocaleDateString('es-ES');
-}
 
 export default async function ExpedientesPage() {
   const sb = supabaseAdmin();
 
-  // 1) Cargar expedientes
+  // 1) Expedientes
   const { data: expedientes, error } = await sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
-    .order('fin', { ascending: true });
-
+    .select('id, codigo, proyecto, cliente, fin, prioridad, estado');
   if (error) {
     return (
       <main>
@@ -26,7 +18,7 @@ export default async function ExpedientesPage() {
     );
   }
 
-  // 2) Cargar partes (solo expediente_id y horas) y calcular totales en código
+  // 2) Partes para totales
   const { data: partes } = await sb
     .from('partes')
     .select('expediente_id, horas')
@@ -39,37 +31,25 @@ export default async function ExpedientesPage() {
     totalPorId.set(id, (totalPorId.get(id) || 0) + (isNaN(h) ? 0 : h));
   });
 
+  const lista: Expediente[] = (expedientes || []).map((e: any) => ({
+    id: e.id,
+    codigo: e.codigo,
+    proyecto: e.proyecto,
+    cliente: e.cliente,
+    fin: e.fin,
+    prioridad: e.prioridad,
+    estado: e.estado,
+    horasTotales: totalPorId.get(e.id) ?? 0
+  }));
+
   return (
     <main>
       <h2>Expedientes</h2>
-      <p>Total: {expedientes?.length ?? 0}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Proyecto</th>
-            <th>Cliente</th>
-            <th>Fin</th>
-            <th>Prioridad</th>
-            <th>Estado</th>
-            <th>Horas imputadas</th>
-          </tr>
-        </thead>
-        <tbody>
-          {expedientes?.map((e: any) => (
-            <tr key={e.id}>
-              <td><a href={`/expedientes/${e.codigo}`}><strong>{e.codigo}</strong></a></td>
-              <td>{e.proyecto}</td>
-              <td>{e.cliente ?? '—'}</td>
-              <td>{fmt(e.fin)}</td>
-              <td>{e.prioridad ?? '—'}</td>
-              <td>{e.estado ?? '—'}</td>
-              <td>{(totalPorId.get(e.id) ?? 0).toFixed(2)} h</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-     <NuevoExpediente />
+      <p>Total: {lista.length}</p>
+
+      <FiltrosExpedientes expedientes={lista} />
+
+      <NuevoExpediente />
     </main>
   );
 }
