@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
+import NuevaTarea from '../../../components/NuevaTarea';
 
 function fmt(d?: string | null) {
   if (!d) return '—';
@@ -69,6 +70,8 @@ export default async function ExpDetalle({ params }: { params: { codigo: string 
           )}
         </tbody>
       </table>
+
+     <NuevaTarea codigo={exp.codigo} />
 
       <p style={{marginTop:16}}>
         <a href="/expedientes">← Volver a expedientes</a>
