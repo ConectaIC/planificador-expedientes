@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import NuevoExpediente from '../../components/NuevoExpediente';
 
 function fmt(d?: string | null) {
   if (!d) return '—';
@@ -68,6 +69,7 @@ export default async function ExpedientesPage() {
           ))}
         </tbody>
       </table>
+     <NuevoExpediente />
     </main>
   );
 }
