@@ -10,22 +10,33 @@ function fmt(d?: string | null) {
 export default async function ExpedientesPage() {
   const sb = supabaseAdmin();
 
-  // 1) Expedientes
+  // 1) Cargar expedientes
   const { data: expedientes, error } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
     .order('fin', { ascending: true });
-  if (error) return <main><h2>Expedientes</h2><p>Error: {error.message}</p></main>;
 
-  // 2) Totales de horas por expediente (una consulta agrupada)
-  const { data: tot } = await sb
+  if (error) {
+    return (
+      <main>
+        <h2>Expedientes</h2>
+        <p>Error al cargar: {error.message}</p>
+      </main>
+    );
+  }
+
+  // 2) Cargar partes (solo expediente_id y horas) y calcular totales en código
+  const { data: partes } = await sb
     .from('partes')
-    .select('expediente_id, total:sum(horas)')
-    .not('expediente_id', 'is', null)
-    .group('expediente_id');
+    .select('expediente_id, horas')
+    .not('expediente_id', 'is', null);
 
   const totalPorId = new Map<string, number>();
-  (tot || []).forEach((r: any) => { if (r.expediente_id) totalPorId.set(r.expediente_id, Number(r.total || 0)); });
+  (partes || []).forEach((p: any) => {
+    const id = p.expediente_id as string;
+    const h = typeof p.horas === 'number' ? p.horas : Number(p.horas || 0);
+    totalPorId.set(id, (totalPorId.get(id) || 0) + (isNaN(h) ? 0 : h));
+  });
 
   return (
     <main>
