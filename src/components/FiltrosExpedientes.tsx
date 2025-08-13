@@ -9,8 +9,10 @@ export type Expediente = {
   fin?: string | null;
   prioridad?: string | null;
   estado?: string | null;
-  horasTotales?: number; // lo rellenaremos desde la página
+  horasTotales?: number; // lo rellenamos desde la página
 };
+
+type Orden = 'finAsc' | 'finDesc' | 'codigoAsc' | 'codigoDesc' | 'horasAsc' | 'horasDesc';
 
 function fmtES(d?: string | null) {
   if (!d) return '—';
@@ -22,7 +24,7 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
   const [q, setQ] = useState('');
   const [pri, setPri] = useState<string>('');
   const [est, setEst] = useState<string>('');
-  const [orden, setOrden] = useState<'finAsc' | 'finDesc' | 'codigoAsc' | 'codigoDesc'>('finAsc');
+  const [orden, setOrden] = useState<Orden>('finAsc');
 
   const filtra = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -50,7 +52,7 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
       case 'horasAsc':
         out.sort((a,b) => (a.horasTotales||0) - (b.horasTotales||0)); break;
       case 'horasDesc':
-         out.sort((a,b) => (b.horasTotales||0) - (a.horasTotales||0)); break;
+        out.sort((a,b) => (b.horasTotales||0) - (a.horasTotales||0)); break;
     }
     return out;
   }, [expedientes, q, pri, est, orden]);
@@ -67,22 +69,22 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
             <option value="">Prioridad: todas</option>
             <option>Alta</option><option>Media</option><option>Baja</option>
           </select>
-<select value={est} onChange={e=>setEst(e.target.value)}>
-  <option value="">Estado: todos</option>
-  <option>Pendiente</option>
-  <option>En curso</option>
-  <option>Entregado</option>
-  <option>En Supervisión</option>
-  <option>Cerrado</option>
-</select>
-<select value={orden} onChange={e=>setOrden(e.target.value as any)}>
-  <option value="finAsc">Orden: Fin ↑</option>
-  <option value="finDesc">Orden: Fin ↓</option>
-  <option value="codigoAsc">Orden: Código ↑</option>
-  <option value="codigoDesc">Orden: Código ↓</option>
-  <option value="horasAsc">Orden: Horas ↑</option>
-  <option value="horasDesc">Orden: Horas ↓</option>
-</select>
+          <select value={est} onChange={e=>setEst(e.target.value)}>
+            <option value="">Estado: todos</option>
+            <option>Pendiente</option>
+            <option>En curso</option>
+            <option>Entregado</option>
+            <option>En Supervisión</option>
+            <option>Cerrado</option>
+          </select>
+          <select value={orden} onChange={e=>setOrden(e.target.value as Orden)}>
+            <option value="finAsc">Orden: Fin ↑</option>
+            <option value="finDesc">Orden: Fin ↓</option>
+            <option value="codigoAsc">Orden: Código ↑</option>
+            <option value="codigoDesc">Orden: Código ↓</option>
+            <option value="horasAsc">Orden: Horas ↑</option>
+            <option value="horasDesc">Orden: Horas ↓</option>
+          </select>
         </div>
         <small style={{ opacity: .7 }}>
           Coincidencias: {filtra.length} / {expedientes.length}
