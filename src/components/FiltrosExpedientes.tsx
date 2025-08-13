@@ -7,44 +7,85 @@ export type Expediente = {
   proyecto: string;
   cliente?: string | null;
   fin?: string | null;
-  prioridad?: string | null;
-  estado?: string | null;
-  horasTotales?: number; // lo rellenamos desde la página
+  prioridad?: string | null; // Alta | Media | Baja | null
+  estado?: string | null;    // Pendiente | En curso | Entregado | En Supervisión | Cerrado | null
+  horasTotales?: number;     // suma de partes
 };
 
-type Orden = 'finAsc' | 'finDesc' | 'codigoAsc' | 'codigoDesc' | 'horasAsc' | 'horasDesc';
+type Props = { expedientes: Expediente[] };
 
-function fmtES(d?: string | null) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return isNaN(+dt) ? '—' : dt.toLocaleDateString('es-ES');
-}
+export default function FiltrosExpedientes({ expedientes }: Props) {
+  const [query, setQuery] = useState('');
+  const [pri, setPri] = useState<'todas'|'Alta'|'Media'|'Baja'>('todas');
+  const [est, setEst] = useState<'todos'|'Pendiente'|'En curso'|'Entregado'|'En Supervisión'|'Cerrado'>('todos');
+  const [orden, setOrden] = useState<'finAsc'|'finDesc'|'codigoAsc'|'codigoDesc'|'horasAsc'|'horasDesc'>('finAsc');
 
-export default function FiltrosExpedientes({ expedientes }: { expedientes: Expediente[] }) {
-  const [q, setQ] = useState('');
-  const [pri, setPri] = useState<string>('');
-  const [est, setEst] = useState<string>('');
-  const [orden, setOrden] = useState<Orden>('finAsc');
+  // ---- Acciones ----
+  async function borrarExpediente(id: string) {
+    if (!confirm('¿Borrar expediente? Esta acción no se puede deshacer.\n(Nota: si tiene tareas/parts relacionados puede fallar por restricciones).')) return;
+    const r = await fetch(`/api/expedientes/${id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!j?.ok) alert('Error: ' + j?.error);
+    else location.reload();
+  }
 
-  const filtra = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    let out = expedientes.slice();
+  async function editarExpediente(e: Expediente) {
+    const nuevoCodigo = prompt('Código', e.codigo) ?? e.codigo;
+    const nuevoProyecto = prompt('Proyecto', e.proyecto) ?? e.proyecto;
+    const nuevoCliente = prompt('Cliente', e.cliente ?? '') ?? e.cliente ?? '';
+    const nuevoFin = prompt('Fin (YYYY-MM-DD)', e.fin ?? '') ?? e.fin ?? '';
+    const nuevaPrioridad = prompt('Prioridad (Alta/Media/Baja)', e.prioridad ?? '') ?? e.prioridad ?? '';
+    const nuevoEstado = prompt('Estado (Pendiente/En curso/Entregado/En Supervisión/Cerrado)', e.estado ?? '') ?? e.estado ?? '';
 
-    if (needle) {
+    const payload = {
+      codigo: nuevoCodigo.trim(),
+      proyecto: nuevoProyecto.trim(),
+      cliente: (nuevoCliente || '').trim() || null,
+      fin: (nuevoFin || '').trim() || null,
+      prioridad: (nuevaPrioridad || '').trim() || null,
+      estado: (nuevoEstado || '').trim() || null,
+    };
+
+    const r = await fetch(`/api/expedientes/${e.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json();
+    if (!j?.ok) alert('Error: ' + j?.error);
+    else location.reload();
+  }
+
+  // ---- Filtrado & Ordenación ----
+  const filtrados = useMemo(() => {
+    let out = (expedientes || []).slice();
+
+    // texto
+    const q = query.trim().toLowerCase();
+    if (q) {
       out = out.filter(e =>
-        (e.codigo || '').toLowerCase().includes(needle) ||
-        (e.proyecto || '').toLowerCase().includes(needle) ||
-        (e.cliente || '').toLowerCase().includes(needle)
+        (e.codigo || '').toLowerCase().includes(q) ||
+        (e.proyecto || '').toLowerCase().includes(q) ||
+        (e.cliente || '').toLowerCase().includes(q)
       );
     }
-    if (pri) out = out.filter(e => (e.prioridad || '') === pri);
-    if (est) out = out.filter(e => (e.estado || '') === est);
 
+    // prioridad
+    if (pri !== 'todas') {
+      out = out.filter(e => (e.prioridad || '').toLowerCase() === pri.toLowerCase());
+    }
+
+    // estado
+    if (est !== 'todos') {
+      out = out.filter(e => (e.estado || '').toLowerCase() === est.toLowerCase());
+    }
+
+    // orden
     switch (orden) {
       case 'finAsc':
-        out.sort((a,b) => new Date(a.fin||0).getTime() - new Date(b.fin||0).getTime()); break;
+        out.sort((a,b) => (a.fin || '9999').localeCompare(b.fin || '9999')); break;
       case 'finDesc':
-        out.sort((a,b) => new Date(b.fin||0).getTime() - new Date(a.fin||0).getTime()); break;
+        out.sort((a,b) => (b.fin || '0000').localeCompare(a.fin || '0000')); break;
       case 'codigoAsc':
         out.sort((a,b) => (a.codigo||'').localeCompare(b.codigo||'')); break;
       case 'codigoDesc':
@@ -54,42 +95,42 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
       case 'horasDesc':
         out.sort((a,b) => (b.horasTotales||0) - (a.horasTotales||0)); break;
     }
+
     return out;
-  }, [expedientes, q, pri, est, orden]);
+  }, [expedientes, query, pri, est, orden]);
 
   return (
-    <>
-      <section style={{ display:'grid', gap:8, margin: '8px 0' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
-          <input
-            placeholder="Buscar por código, proyecto o cliente…"
-            value={q} onChange={e=>setQ(e.target.value)}
-          />
-          <select value={pri} onChange={e=>setPri(e.target.value)}>
-            <option value="">Prioridad: todas</option>
-            <option>Alta</option><option>Media</option><option>Baja</option>
-          </select>
-          <select value={est} onChange={e=>setEst(e.target.value)}>
-            <option value="">Estado: todos</option>
-            <option>Pendiente</option>
-            <option>En curso</option>
-            <option>Entregado</option>
-            <option>En Supervisión</option>
-            <option>Cerrado</option>
-          </select>
-          <select value={orden} onChange={e=>setOrden(e.target.value as Orden)}>
-            <option value="finAsc">Orden: Fin ↑</option>
-            <option value="finDesc">Orden: Fin ↓</option>
-            <option value="codigoAsc">Orden: Código ↑</option>
-            <option value="codigoDesc">Orden: Código ↓</option>
-            <option value="horasAsc">Orden: Horas ↑</option>
-            <option value="horasDesc">Orden: Horas ↓</option>
-          </select>
-        </div>
-        <small style={{ opacity: .7 }}>
-          Coincidencias: {filtra.length} / {expedientes.length}
-        </small>
-      </section>
+    <section>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 200px 200px 200px', gap:8, alignItems:'center'}}>
+        <input
+          placeholder="Buscar por código, proyecto o cliente"
+          value={query} onChange={e=>setQuery(e.target.value)}
+        />
+        <select value={pri} onChange={e=>setPri(e.target.value as any)}>
+          <option value="todas">Prioridad: todas</option>
+          <option value="Alta">Alta</option>
+          <option value="Media">Media</option>
+          <option value="Baja">Baja</option>
+        </select>
+        <select value={est} onChange={e=>setEst(e.target.value as any)}>
+          <option value="todos">Estado: todos</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="En curso">En curso</option>
+          <option value="Entregado">Entregado</option>
+          <option value="En Supervisión">En Supervisión</option>
+          <option value="Cerrado">Cerrado</option>
+        </select>
+        <select value={orden} onChange={e=>setOrden(e.target.value as any)}>
+          <option value="finAsc">Orden: Fin ↑</option>
+          <option value="finDesc">Orden: Fin ↓</option>
+          <option value="codigoAsc">Orden: Código ↑</option>
+          <option value="codigoDesc">Orden: Código ↓</option>
+          <option value="horasAsc">Orden: Horas ↑</option>
+          <option value="horasDesc">Orden: Horas ↓</option>
+        </select>
+      </div>
+
+      <p style={{marginTop:6}}>Coincidencias: {filtrados.length} / {expedientes.length}</p>
 
       <table>
         <thead>
@@ -101,25 +142,31 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
             <th>Prioridad</th>
             <th>Estado</th>
             <th>Horas imputadas</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {filtra.map(e => (
+          {filtrados.length ? filtrados.map(e => (
             <tr key={e.id}>
-              <td><a href={`/expedientes/${e.codigo}`}><strong>{e.codigo}</strong></a></td>
-              <td>{e.proyecto}</td>
-              <td>{e.cliente ?? '—'}</td>
-              <td>{fmtES(e.fin)}</td>
-              <td>{e.prioridad ?? '—'}</td>
-              <td>{e.estado ?? '—'}</td>
+              <td>
+                <a href={`/expedientes/${encodeURIComponent(e.codigo)}`}>{e.codigo}</a>
+              </td>
+              <td>{e.proyecto || '—'}</td>
+              <td>{e.cliente || '—'}</td>
+              <td>{e.fin ? new Date(e.fin).toLocaleDateString('es-ES') : '—'}</td>
+              <td>{e.prioridad || '—'}</td>
+              <td>{e.estado || '—'}</td>
               <td>{(e.horasTotales ?? 0).toFixed(2)} h</td>
+              <td style={{whiteSpace:'nowrap'}}>
+                <button onClick={() => editarExpediente(e)}>Editar</button>{' '}
+                <button onClick={() => borrarExpediente(e.id)}>Borrar</button>
+              </td>
             </tr>
-          ))}
-          {filtra.length === 0 && (
-            <tr><td colSpan={7}>Sin resultados</td></tr>
+          )) : (
+            <tr><td colSpan={8}>Sin expedientes.</td></tr>
           )}
         </tbody>
       </table>
-    </>
+    </section>
   );
 }
