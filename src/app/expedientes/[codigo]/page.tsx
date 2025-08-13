@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 import TareasTabla from '../../../components/TareasTabla';
 import NuevaTarea from '../../../components/NuevaTarea';
