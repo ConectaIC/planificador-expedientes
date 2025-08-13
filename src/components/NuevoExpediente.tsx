@@ -47,14 +47,15 @@ export default function NuevoExpediente() {
               </select>
             </label>
           </div>
-          <label>Estado
-            <select name="estado" defaultValue="En curso">
-              <option>En curso</option>
-              <option>Pendiente</option>
-              <option>Entregado</option>
-              <option>Cerrado</option>
-            </select>
-          </label>
+<label>Estado
+  <select name="estado" defaultValue="En curso">
+    <option>Pendiente</option>
+    <option>En curso</option>
+    <option>Entregado</option>
+    <option>En Supervisión</option>
+    <option>Cerrado</option>
+  </select>
+</label>
           <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar expediente'}</button>
           {msg && <p>{msg}</p>}
         </form>
