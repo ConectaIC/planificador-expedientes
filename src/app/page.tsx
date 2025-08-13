@@ -1,44 +1,14 @@
-'use client';
-import { useMemo, useState } from 'react';
-
-export default function PartesPage() {
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const hoy = useMemo(() => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); // fecha local
-    return d.toISOString().slice(0, 10);
-  }, []);
-
-  async function onSubmit(e: any) {
-    e.preventDefault();
-    setSaving(true); setMsg(null);
-    const form = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(form.entries());
-    const res = await fetch('/api/partes', { method: 'POST', body: JSON.stringify(payload) });
-    const j = await res.json();
-    setSaving(false);
-    setMsg(j.ok ? '✔ Parte guardado' : 'Error: ' + j.error);
-    if (j.ok) (e.target as HTMLFormElement).reset();
-  }
-
+export default function Home() {
   return (
-    <main>
-      <h2>Imputación de horas</h2>
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 480 }}>
-        <label>Fecha <input type="date" name="fecha" defaultValue={hoy} required /></label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <label>Inicio <input type="time" name="inicio" /></label>
-          <label>Fin <input type="time" name="fin" /></label>
-        </div>
-        <label>Horas <input type="number" name="horas" step="0.25" min="0" placeholder="Ej. 1.5" /></label>
-        <label>Expediente <input name="expediente" placeholder="25.201ATG" required /></label>
-        <label>Comentario <input name="comentario" placeholder="Descripción breve" /></label>
-        <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar'}</button>
-        {msg && <p>{msg}</p>}
-      </form>
+    <main style={{ display: 'grid', gap: 16 }}>
+      <h2>Panel</h2>
+
+      <p>Accesos rápidos:</p>
+      <ul style={{ lineHeight: 1.8 }}>
+        <li><a href="/expedientes">Expedientes</a></li>
+        <li><a href="/partes">Imputación de horas</a></li>
+        <li><a href="/resumen">Resumen para asistente</a></li>
+      </ul>
     </main>
   );
 }
-
