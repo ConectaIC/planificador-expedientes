@@ -15,7 +15,7 @@ export default function PartesPage() {
   const [inicio, setInicio] = useState<string>('');
   const [fin, setFin] = useState<string>('');
   const [horas, setHoras] = useState<string>('');
-  const [horasBloqueadas, setHorasBloqueadas] = useState<boolean>(false); // si el usuario edita horas, no recalculamos
+  const [horasBloqueadas, setHorasBloqueadas] = useState<boolean>(false);
 
   const [partes, setPartes] = useState<any[]>([]);
 
@@ -43,7 +43,7 @@ export default function PartesPage() {
   }
   useEffect(() => { cargaPartes(); }, []);
 
-  // Expedientes filtrados por texto
+  // Expedientes filtrados
   const expsFiltrados = useMemo(() => {
     const n = filtro.trim().toLowerCase();
     if (!n) return exps;
@@ -53,27 +53,16 @@ export default function PartesPage() {
     );
   }, [exps, filtro]);
 
-  // Al elegir expediente, cargar tareas de ese expediente (para enlace opcional)
+  // Cargar tareas al elegir expediente
   async function onExpedienteChange(codigo: string) {
     if (!codigo) { setTareas([]); return; }
-    const r = await fetch(`/api/expedientes`, { cache: 'no-store' });
-    const j = await r.json();
-    if (!j?.ok) { setTareas([]); return; }
-    const exp = (j.data as Exp[]).find((e:any)=>e.codigo===codigo);
-    if (!exp) { setTareas([]); return; }
-    // pedir tareas del expediente
-    const rt = await fetch(`/api/expediente-tareas?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' })
-      .catch(()=>null as any);
-    if (rt) {
-      const jt = await rt.json();
-      if (jt?.ok) setTareas(jt.data as Tarea[]);
-      else setTareas([]);
-    } else {
-      setTareas([]);
-    }
+    const rt = await fetch(`/api/expediente-tareas?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' });
+    const jt = await rt.json();
+    if (jt?.ok) setTareas(jt.data as Tarea[]);
+    else setTareas([]);
   }
 
-  // Redondeo a 15 minutos en los time inputs
+  // Redondear a 15 min
   function norm15(value: string) {
     if (!value) return value;
     const [h, m] = value.split(':').map(Number);
@@ -84,7 +73,7 @@ export default function PartesPage() {
     return `${hh}:${mm}`;
   }
 
-  // Recalcular horas en cualquier cambio de inicio/fin si horas no están “bloqueadas”
+  // Recalcular horas cuando cambien inicio/fin (si el usuario no las “bloquea”)
   useEffect(() => {
     if (!horasBloqueadas && inicio && fin) {
       const i = norm15(inicio);
@@ -161,7 +150,6 @@ export default function PartesPage() {
           </select>
         </label>
 
-        {/* Asignación opcional a tarea del expediente */}
         {tareas.length > 0 && (
           <label>Tarea (opcional)
             <select name="tarea_id" defaultValue="">
