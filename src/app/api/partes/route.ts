@@ -3,14 +3,12 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const limit = Number(searchParams.get('limit') || 50);
+  const limit = Number(searchParams.get('limit') || 100);
 
   const sb = supabaseAdmin();
-  // Listar partes recientes con datos básicos del expediente y (opcional) la tarea
   const { data, error } = await sb
-    .from('partes_view') // si no existe, usamos join manual (ver más abajo)
+    .from('partes_view')
     .select('*')
-    .order('fecha', { ascending: false })
     .limit(limit);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
@@ -27,6 +25,7 @@ export async function POST(req: NextRequest) {
     const inicio: string | null = body.inicio ?? null;
     const fin: string | null = body.fin ?? null;
 
+    // cálculo de horas si no vienen
     if (!horas && inicio && fin) {
       const [h1, m1] = String(inicio).split(':').map(Number);
       const [h2, m2] = String(fin).split(':').map(Number);
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     const sb = supabaseAdmin();
 
-    // buscar expediente por código
+    // localizar expediente por código
     let expediente_id: string | null = null;
     if (expedienteCodigo) {
       const { data: exp, error: eExp } = await sb.from('expedientes').select('id').eq('codigo', expedienteCodigo).maybeSingle();
@@ -63,7 +62,7 @@ export async function POST(req: NextRequest) {
     });
     if (error) throw error;
 
-    // si viene tarea_id, sumar horas a la tarea
+    // si hay tarea vinculada, sumar horas a la tarea
     if (tareaId && horas && !isNaN(horas)) {
       const { data: t0, error: et0 } = await sb.from('tareas').select('horas_realizadas').eq('id', tareaId).maybeSingle();
       if (et0) throw et0;
