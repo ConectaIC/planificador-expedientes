@@ -7,6 +7,8 @@ export default function PartesPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [exps, setExps] = useState<Exp[]>([]);
+  const [filtro, setFiltro] = useState<string>(''); // ← buscador del desplegable
+
   const [inicio, setInicio] = useState<string>('');
   const [fin, setFin] = useState<string>('');
   const [horas, setHoras] = useState<string>('');
@@ -27,6 +29,16 @@ export default function PartesPage() {
     })();
   }, []);
 
+  // Expedientes filtrados por texto (código o proyecto)
+  const expsFiltrados = useMemo(() => {
+    const n = filtro.trim().toLowerCase();
+    if (!n) return exps;
+    return exps.filter(x =>
+      x.codigo.toLowerCase().includes(n) ||
+      (x.proyecto || '').toLowerCase().includes(n)
+    );
+  }, [exps, filtro]);
+
   // calcular horas si hay inicio y fin (y no has escrito manualmente)
   useEffect(() => {
     if (inicio && fin) {
@@ -34,9 +46,8 @@ export default function PartesPage() {
       const [h2, m2] = fin.split(':').map(Number);
       if (!isNaN(h1) && !isNaN(h2)) {
         let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins < 0) mins += 24 * 60; // por si pasa de medianoche (raro, pero seguro)
+        if (mins < 0) mins += 24 * 60; // por si pasa medianoche
         const h = Math.round((mins / 60) * 100) / 100;
-        // si el usuario no ha escrito horas manualmente, autocompleta
         if (!horas) setHoras(String(h));
       }
     }
@@ -46,9 +57,7 @@ export default function PartesPage() {
     e.preventDefault();
     setSaving(true); setMsg(null);
     const form = new FormData(e.currentTarget);
-    // si no hay "horas" pero sí inicio/fin, acordarse de meterlas en el payload
     if (!form.get('horas') && horas) form.set('horas', horas);
-
     const payload = Object.fromEntries(form.entries());
     const res = await fetch('/api/partes', { method: 'POST', body: JSON.stringify(payload) });
     const j = await res.json();
@@ -57,6 +66,7 @@ export default function PartesPage() {
     if (j.ok) {
       (e.target as HTMLFormElement).reset();
       setInicio(''); setFin(''); setHoras('');
+      setFiltro('');
     }
   }
 
@@ -80,10 +90,19 @@ export default function PartesPage() {
           />
         </label>
 
+        <div style={{ display:'grid', gap:6 }}>
+          <small style={{opacity:.8}}>Filtrar expedientes por código o proyecto</small>
+          <input
+            placeholder="Escribe para filtrar…"
+            value={filtro}
+            onChange={e=>setFiltro(e.target.value)}
+          />
+        </div>
+
         <label>Expediente
-          <select name="expediente" required defaultValue="">
+          <select name="expediente" required defaultValue="" >
             <option value="" disabled>— Selecciona expediente —</option>
-            {exps.map(x => (
+            {expsFiltrados.map(x => (
               <option key={x.id} value={x.codigo}>
                 {x.codigo} — {x.proyecto}
               </option>
@@ -92,7 +111,7 @@ export default function PartesPage() {
         </label>
 
         <label>Comentario
-          <textarea name="comentario" placeholder="Descripción breve" rows={4} />
+          <textarea name="comentario" placeholder="Descripción breve" rows={6} />
         </label>
 
         <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar'}</button>
