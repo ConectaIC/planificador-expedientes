@@ -47,6 +47,10 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
         out.sort((a,b) => (a.codigo||'').localeCompare(b.codigo||'')); break;
       case 'codigoDesc':
         out.sort((a,b) => (b.codigo||'').localeCompare(a.codigo||'')); break;
+      case 'horasAsc':
+        out.sort((a,b) => (a.horasTotales||0) - (b.horasTotales||0)); break;
+      case 'horasDesc':
+         out.sort((a,b) => (b.horasTotales||0) - (a.horasTotales||0)); break;
     }
     return out;
   }, [expedientes, q, pri, est, orden]);
