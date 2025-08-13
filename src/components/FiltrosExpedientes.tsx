@@ -63,10 +63,14 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
             <option value="">Prioridad: todas</option>
             <option>Alta</option><option>Media</option><option>Baja</option>
           </select>
-          <select value={est} onChange={e=>setEst(e.target.value)}>
-            <option value="">Estado: todos</option>
-            <option>Pendiente</option><option>En curso</option><option>Entregado</option><option>Cerrado</option>
-          </select>
+<select value={est} onChange={e=>setEst(e.target.value)}>
+  <option value="">Estado: todos</option>
+  <option>Pendiente</option>
+  <option>En curso</option>
+  <option>Entregado</option>
+  <option>En Supervisión</option>
+  <option>Cerrado</option>
+</select>
           <select value={orden} onChange={e=>setOrden(e.target.value as any)}>
             <option value="finAsc">Orden: Fin ↑</option>
             <option value="finDesc">Orden: Fin ↓</option>
