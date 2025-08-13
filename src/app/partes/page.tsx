@@ -26,7 +26,7 @@ export default function PartesPage() {
     return d.toISOString().slice(0, 10);
   }, []);
 
-  // cargar expedientes
+  // cargar expedientes (para el desplegable)
   useEffect(() => {
     (async () => {
       const r = await fetch('/api/expedientes', { cache: 'no-store' });
@@ -35,7 +35,7 @@ export default function PartesPage() {
     })();
   }, []);
 
-  // cargar partes recientes
+  // cargar partes recientes (tabla inferior)
   async function cargaPartes() {
     const r = await fetch('/api/partes?limit=100', { cache: 'no-store' });
     const j = await r.json();
@@ -43,7 +43,7 @@ export default function PartesPage() {
   }
   useEffect(() => { cargaPartes(); }, []);
 
-  // Expedientes filtrados
+  // Expedientes filtrados por texto del campo “Filtrar…”
   const expsFiltrados = useMemo(() => {
     const n = filtro.trim().toLowerCase();
     if (!n) return exps;
@@ -53,16 +53,15 @@ export default function PartesPage() {
     );
   }, [exps, filtro]);
 
-  // Cargar tareas al elegir expediente
+  // === CARGAR TAREAS AL ELEGIR EXPEDIENTE ===
   async function onExpedienteChange(codigo: string) {
     if (!codigo) { setTareas([]); return; }
     const rt = await fetch(`/api/expediente-tareas?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' });
     const jt = await rt.json();
-    if (jt?.ok) setTareas(jt.data as Tarea[]);
-    else setTareas([]);
+    setTareas(jt?.ok ? (jt.data as Tarea[]) : []);
   }
 
-  // Redondear a 15 min
+  // Redondeo a 15 minutos en los time inputs
   function norm15(value: string) {
     if (!value) return value;
     const [h, m] = value.split(':').map(Number);
@@ -73,7 +72,7 @@ export default function PartesPage() {
     return `${hh}:${mm}`;
   }
 
-  // Recalcular horas cuando cambien inicio/fin (si el usuario no las “bloquea”)
+  // Recalcular horas cuando cambian inicio/fin (si el usuario no tocó “horas”)
   useEffect(() => {
     if (!horasBloqueadas && inicio && fin) {
       const i = norm15(inicio);
@@ -105,7 +104,7 @@ export default function PartesPage() {
       (e.target as HTMLFormElement).reset();
       setInicio(''); setFin(''); setHoras(''); setHorasBloqueadas(false);
       setFiltro(''); setTareas([]);
-      await cargaPartes(); // refrescar tabla
+      await cargaPartes();
     }
   }
 
@@ -141,6 +140,7 @@ export default function PartesPage() {
             value={filtro} onChange={e=>setFiltro(e.target.value)} />
         </div>
 
+        {/* Selección de expediente: AL CAMBIAR → carga tareas */}
         <label>Expediente
           <select name="expediente" required defaultValue="" onChange={e=>onExpedienteChange(e.target.value)}>
             <option value="" disabled>— Selecciona expediente —</option>
@@ -150,6 +150,7 @@ export default function PartesPage() {
           </select>
         </label>
 
+        {/* Selector de tareas, solo si hay tareas del expediente */}
         {tareas.length > 0 && (
           <label>Tarea (opcional)
             <select name="tarea_id" defaultValue="">
