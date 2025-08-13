@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import FiltrosExpedientes, { Expediente } from '../../components/FiltrosExpedientes';
 import NuevoExpediente from '../../components/NuevoExpediente';
