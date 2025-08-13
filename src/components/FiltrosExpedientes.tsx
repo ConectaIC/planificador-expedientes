@@ -71,12 +71,14 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
   <option>En Supervisión</option>
   <option>Cerrado</option>
 </select>
-          <select value={orden} onChange={e=>setOrden(e.target.value as any)}>
-            <option value="finAsc">Orden: Fin ↑</option>
-            <option value="finDesc">Orden: Fin ↓</option>
-            <option value="codigoAsc">Orden: Código ↑</option>
-            <option value="codigoDesc">Orden: Código ↓</option>
-          </select>
+<select value={orden} onChange={e=>setOrden(e.target.value as any)}>
+  <option value="finAsc">Orden: Fin ↑</option>
+  <option value="finDesc">Orden: Fin ↓</option>
+  <option value="codigoAsc">Orden: Código ↑</option>
+  <option value="codigoDesc">Orden: Código ↓</option>
+  <option value="horasAsc">Orden: Horas ↑</option>
+  <option value="horasDesc">Orden: Horas ↓</option>
+</select>
         </div>
         <small style={{ opacity: .7 }}>
           Coincidencias: {filtra.length} / {expedientes.length}
