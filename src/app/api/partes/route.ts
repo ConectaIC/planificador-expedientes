@@ -2,97 +2,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
-/**
- * GET /api/partes?limit=100
- * Devuelve partes recientes desde la vista partes_view
- * (incluye texto de expediente y título de tarea si existe).
- */
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const limit = Number(searchParams.get('limit') || 100);
-
-  const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from('partes_view')
-    .select('*')
-    .order('fecha', { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
-  }
-  return NextResponse.json({ ok: true, data });
+function calcHours(inicio?: string|null, fin?: string|null) {
+  if (!inicio || !fin) return null;
+  const [h1, m1] = inicio.split(':').map(Number);
+  const [h2, m2] = fin.split(':').map(Number);
+  if ([h1,m1,h2,m2].some(n => Number.isNaN(n))) return null;
+  const t1 = h1*60 + m1;
+  const t2 = h2*60 + m2;
+  const diff = t2 - t1;
+  if (diff <= 0) return 0;
+  // redondeo a cuartos
+  return Math.round((diff/60) * 4) / 4;
 }
 
-/**
- * POST /api/partes
- * Crea un parte. Si no vienen "horas" pero sí "inicio" y "fin",
- * calcula horas en backend. Vincula por "expediente" (código) y
- * opcionalmente por "tarea_id". La actualización de horas_realizadas
- * de la tarea la hace un TRIGGER en BD.
- *
- * Body (JSON):
- *  {
- *    fecha: '2025-08-12',
- *    inicio: '08:00', fin: '10:15', horas?: 2.25,
- *    expediente: '25.201ATG',
- *    tarea_id?: 'uuid-de-tareas',
- *    comentario?: 'texto'
- *  }
- */
+export async function GET() {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb
+      .from('partes')
+      .select('id, fecha, hora_inicio, hora_fin, horas, comentario, expediente_id, tarea_id')
+      .order('fecha', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return NextResponse.json({ ok:true, data });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e.message }, { status: 400 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    const fecha = body.fecha ? new Date(body.fecha) : null;
-
-    let horas = body.horas ? parseFloat(body.horas) : null;
-    const inicio: string | null = body.inicio ?? null;
-    const fin: string | null = body.fin ?? null;
-
-    // Si no viene "horas", calcular desde inicio/fin
-    if (!horas && inicio && fin) {
-      const [h1, m1] = String(inicio).split(':').map(Number);
-      const [h2, m2] = String(fin).split(':').map(Number);
-      if (!isNaN(h1) && !isNaN(h2)) {
-        let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins < 0) mins += 24 * 60; // si cruza medianoche
-        horas = Math.round((mins / 60) * 100) / 100;
-      }
-    }
-
-    const expedienteCodigo = String(body.expediente || '').trim();
-    const comentario = String(body.comentario || '');
-    const tareaId = body.tarea_id ? String(body.tarea_id) : null;
-
     const sb = supabaseAdmin();
 
-    // Localizar expediente por código → obtener id
-    let expediente_id: string | null = null;
-    if (expedienteCodigo) {
-      const { data: exp, error: eExp } = await sb
-        .from('expedientes')
-        .select('id')
-        .eq('codigo', expedienteCodigo)
-        .maybeSingle();
-      if (eExp) throw eExp;
-      expediente_id = exp?.id ?? null;
-    }
+    const fecha: string | null = (body.fecha ?? null);
+    const inicio: string | null = (body.inicio ?? null); // HH:MM
+    const fin: string | null = (body.fin ?? null);       // HH:MM
+    const horasBody: number | null = (typeof body.horas === 'number' ? body.horas : null);
 
-    // Insertar parte (el trigger actualizará tareas.horas_realizadas si hay tarea_id)
-    const { error } = await sb.from('partes').insert({
-      fecha,
-      hora_inicio: inicio || null,
-      hora_fin: fin || null,
-      horas: horas ?? null,
-      comentario,
-      expediente_id,
-      tarea_id: tareaId || null
-    });
+    const horas = horasBody ?? calcHours(inicio, fin);
+
+    const payload: any = {
+      fecha: fecha,
+      hora_inicio: inicio,
+      hora_fin: fin,
+      horas: horas,
+      comentario: body.comentario ?? null,
+      expediente_id: body.expediente_id ?? null,
+      tarea_id: body.tarea_id ?? null,
+      usuario_email: body.usuario_email ?? null,
+    };
+
+    const { data, error } = await sb.from('partes').insert(payload).select('id');
     if (error) throw error;
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 400 });
+    return NextResponse.json({ ok:true, id: data?.[0]?.id });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e.message }, { status: 400 });
   }
 }
