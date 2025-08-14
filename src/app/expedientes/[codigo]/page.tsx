@@ -12,7 +12,7 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
   const codigo = decodeURIComponent(params.codigo);
   const sb = supabaseAdmin();
 
-  // 1) Buscar expediente por código
+  // 1) Expediente
   const { data: expediente, error: eExp } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
@@ -36,7 +36,7 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
     );
   }
 
-  // 2) Cargar tareas del expediente
+  // 2) Tareas del expediente
   const { data: tareasData, error: eTar } = await sb
     .from('tareas')
     .select('id, titulo, estado, prioridad, horas_previstas, horas_realizadas, vencimiento')
@@ -59,7 +59,10 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
 
   return (
     <main>
-      <a href="/expedientes" style={{ display: 'inline-block', marginBottom: 8 }}>← Volver a expedientes</a>
+      <div style={{display:'flex', gap:12, alignItems:'center', marginBottom: 8}}>
+        <a href="/expedientes" style={{ display: 'inline-block' }}>← Volver a expedientes</a>
+        <a href="/tareas"><button>📝 Ver todas las tareas</button></a>
+      </div>
 
       <h2>{expediente.codigo}</h2>
       <p style={{ margin: 0, opacity: 0.9 }}>{expediente.proyecto}</p>
