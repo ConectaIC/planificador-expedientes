@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 import TareasTabla, { Tarea } from '../../../components/TareasTabla';
+import NuevaTareaModal from '../../../components/NuevaTareaModal';
 
 type PageProps = { params: { codigo: string } };
 
@@ -52,7 +53,7 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
     vencimiento: t.vencimiento
   }));
 
-  function fmtFin(d?: string | null) {
+  function fmtFecha(d?: string | null) {
     return d ? d.split('T')[0].split('-').reverse().join('/') : '—';
   }
 
@@ -65,12 +66,17 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
         <div><strong>Cliente:</strong><br />{expediente.cliente || '—'}</div>
-        <div><strong>Fin previsto:</strong><br />{fmtFin(expediente.fin)}</div>
+        <div><strong>Fin previsto:</strong><br />{fmtFecha(expediente.fin)}</div>
         <div><strong>Prioridad:</strong><br />{expediente.prioridad || '—'}</div>
         <div><strong>Estado:</strong><br />{expediente.estado || '—'}</div>
       </div>
 
-      <h3 style={{ marginTop: 20 }}>Tareas</h3>
+      <div style={{display:'flex', alignItems:'center', gap:8, marginTop: 20}}>
+        <h3 style={{ margin: 0 }}>Tareas</h3>
+        {/* Botón ➕ para crear tarea vinculada a este expediente */}
+        <NuevaTareaModal expedienteId={expediente.id} />
+      </div>
+
       {eTar ? (
         <p>Error al cargar tareas: {eTar.message}</p>
       ) : (
