@@ -41,7 +41,7 @@ export default async function ExpedientesPage() {
     codigo: e.codigo,
     proyecto: e.proyecto,
     cliente: e.cliente,
-    fin: e.fin,                   // YYYY-MM-DD (no formatear aquí)
+    fin: e.fin,
     prioridad: e.prioridad,
     estado: e.estado,
     horasTotales: totalPorId.get(e.id) ?? 0,
@@ -49,7 +49,11 @@ export default async function ExpedientesPage() {
 
   return (
     <main>
-      <h2>Expedientes</h2>
+      <div style={{display:'flex', alignItems:'center', gap:12}}>
+        <h2 style={{margin:0}}>Expedientes</h2>
+        <a href="/tareas"><button>📝 Ver todas las tareas</button></a>
+      </div>
+
       <p>Total: {lista.length}</p>
 
       <FiltrosExpedientes expedientes={lista} />
