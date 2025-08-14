@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 import TareasTabla from '../../../components/TareasTabla';
 import NuevaTareaModal from '../../../components/NuevaTareaModal';
-import type { Tarea } from '@/types/tareas';
 
 type PageProps = { params: { codigo: string } };
 
@@ -58,15 +57,15 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
     );
   }
 
-  const tareas: Tarea[] = (tareasData || []).map((t: any) => ({
-    id: t.id,
-    titulo: t.titulo,
-    estado: (t.estado || 'Pendiente') as Tarea['estado'],
-    prioridad: t.prioridad as Tarea['prioridad'],
-    vencimiento: t.vencimiento,
-    horas_previstas: t.horas_previstas,
-    horas_realizadas: t.horas_realizadas,
-  }));
+const tareas = (tareasData || []).map((t: any) => ({
+  id: t.id,
+  titulo: t.titulo ?? null,
+  estado: t.estado ?? 'Pendiente',
+  prioridad: t.prioridad ?? null,
+  vencimiento: t.vencimiento ?? null,      // ← importante para evitar undefined
+  horas_previstas: t.horas_previstas ?? 0,
+  horas_realizadas: t.horas_realizadas ?? 0,
+}));
 
   return (
     <main>
