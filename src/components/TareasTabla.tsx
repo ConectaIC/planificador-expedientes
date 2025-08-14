@@ -16,7 +16,6 @@ export type Tarea = {
 
 type Props = {
   tareas: Tarea[];
-  /** si pasas el id del expediente podemos, por ejemplo, habilitar crear tarea, etc. */
   expedienteId?: string;
 };
 
@@ -155,7 +154,6 @@ export default function TareasTabla({ tareas, expedienteId }: Props) {
               <td>{t.titulo}</td>
               <td>
                 {t.estado}{' '}
-                {/* check de completada: lo mostramos siempre; puedes ocultarlo si no está completada */}
                 <label style={{ marginLeft: 8, userSelect: 'none' }}>
                   <input
                     type="checkbox"
