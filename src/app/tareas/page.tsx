@@ -1,8 +1,21 @@
+// src/app/tareas/page.tsx
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
+
+type RelExp = { codigo?: string | null; proyecto?: string | null };
+type Row = {
+  id: string;
+  titulo: string;
+  estado?: string | null;
+  prioridad?: string | null;
+  horas_previstas?: number | null;
+  horas_realizadas?: number | null;
+  vencimiento?: string | null;
+  expedientes?: RelExp | RelExp[] | null;
+};
 
 export default async function TareasGlobalPage() {
   const sb = supabaseAdmin();
@@ -24,10 +37,18 @@ export default async function TareasGlobalPage() {
     );
   }
 
+  // Normalizamos: si expedientes viene como array, tomamos el primer elemento
+  const normalizadas = (data as Row[] | null | undefined)?.map((r) => ({
+    ...r,
+    expedientes: Array.isArray(r.expedientes)
+      ? (r.expedientes[0] ?? null)
+      : r.expedientes ?? null,
+  })) ?? [];
+
   return (
     <main>
       <h2>Todas las tareas</h2>
-      <FiltrosTareasGlobal tareas={data || []} />
+      <FiltrosTareasGlobal tareas={normalizadas as any} />
     </main>
   );
 }
