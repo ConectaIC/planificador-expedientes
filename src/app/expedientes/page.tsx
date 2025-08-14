@@ -1,5 +1,7 @@
-export const dynamic = 'force-dynamic';
+// src/app/expedientes/page.tsx
 export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import FiltrosExpedientes, { Expediente } from '../../components/FiltrosExpedientes';
 import NuevoExpediente from '../../components/NuevoExpediente';
@@ -11,6 +13,7 @@ export default async function ExpedientesPage() {
   const { data: expedientes, error } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, prioridad, estado');
+
   if (error) {
     return (
       <main>
@@ -20,7 +23,7 @@ export default async function ExpedientesPage() {
     );
   }
 
-  // 2) Partes para totales
+  // 2) Partes -> totales por expediente_id
   const { data: partes } = await sb
     .from('partes')
     .select('expediente_id, horas')
@@ -38,10 +41,10 @@ export default async function ExpedientesPage() {
     codigo: e.codigo,
     proyecto: e.proyecto,
     cliente: e.cliente,
-    fin: e.fin,
+    fin: e.fin,                   // YYYY-MM-DD (no formatear aquí)
     prioridad: e.prioridad,
     estado: e.estado,
-    horasTotales: totalPorId.get(e.id) ?? 0
+    horasTotales: totalPorId.get(e.id) ?? 0,
   }));
 
   return (
@@ -51,7 +54,9 @@ export default async function ExpedientesPage() {
 
       <FiltrosExpedientes expedientes={lista} />
 
-      <NuevoExpediente />
+      <div style={{ marginTop: 16 }}>
+        <NuevoExpediente />
+      </div>
     </main>
   );
 }
