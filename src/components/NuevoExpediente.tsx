@@ -3,6 +3,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from './Modal';
 
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 export default function NuevoExpediente() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -12,15 +20,23 @@ export default function NuevoExpediente() {
     e.preventDefault();
     setSaving(true);
     const fd = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(fd.entries());
+    const payload = {
+      codigo: (fd.get('codigo') as string)?.trim(),
+      proyecto: (fd.get('proyecto') as string)?.trim(),
+      cliente: (fd.get('cliente') as string)?.trim() || null,
+      fin: ((fd.get('fin') as string) || '').trim() || null,
+      prioridad: (fd.get('prioridad') as string) || null,
+      estado: (fd.get('estado') as string) || null,
+    };
+
     const res = await fetch('/api/expedientes', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
     const j = await res.json();
     setSaving(false);
-    if (!j?.ok) { alert('Error al crear: '+(j?.error||'desconocido')); return; }
+    if (!j?.ok) { alert('Error al crear: ' + (j?.error||'desconocido')); return; }
     setOpen(false);
     (e.target as HTMLFormElement).reset();
     router.refresh();
@@ -28,23 +44,23 @@ export default function NuevoExpediente() {
 
   return (
     <>
-      <button onClick={()=>setOpen(true)}>➕ Nuevo expediente</button>
+      <button className="btn" onClick={()=>setOpen(true)}>➕ Nuevo expediente</button>
       <Modal open={open} onClose={()=>!saving && setOpen(false)} title="Nuevo expediente">
         <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-            <label>Código
-              <input name="codigo" required placeholder="25.123PR" />
-            </label>
-            <label>Fin (YYYY-MM-DD)
-              <input name="fin" placeholder="2025-09-01" />
-            </label>
-          </div>
+          <label>Código
+            <input name="codigo" required placeholder="25.201ATG, 25.107PR…" />
+          </label>
           <label>Proyecto
             <input name="proyecto" required placeholder="Descripción del proyecto" />
           </label>
-          <label>Cliente
-            <input name="cliente" placeholder="Cliente" />
-          </label>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+            <label>Cliente
+              <input name="cliente" placeholder="Ayuntamiento / Privado…" />
+            </label>
+            <label>Fin (entrega prevista)
+              <input name="fin" type="date" defaultValue="" min={todayISO()} />
+            </label>
+          </div>
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
             <label>Prioridad
               <select name="prioridad" defaultValue="">
