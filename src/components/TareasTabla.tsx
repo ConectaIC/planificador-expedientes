@@ -1,206 +1,186 @@
 'use client';
-
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import type { Tarea } from '@/types/tareas';
+import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
+
+export type Tarea = {
+  id: string;
+  titulo: string|null;
+  estado: 'Pendiente'|'En curso'|'Completada';
+  prioridad: 'Alta'|'Media'|'Baja'|null;
+  vencimiento: string|null;          // yyyy-mm-dd
+  horas_previstas: number|null;
+  horas_realizadas: number|null;
+};
 
 type Props = {
   tareas: Tarea[];
-  expedienteId?: string;
+  expedienteId: string;
 };
 
-function fmtDate(d?: string | null) {
-  if (!d) return '—';
-  const ymd = d.includes('T') ? d.split('T')[0] : d;
-  const [y, m, day] = ymd.split('-');
-  return `${day}/${m}/${y}`;
-}
-function pct(done?: number | null, planned?: number | null) {
-  const d = Number(done ?? 0);
-  const p = Number(planned ?? 0);
-  if (!p) return '0%';
-  return `${Math.round((d / p) * 100)}%`;
-}
-
 export default function TareasTabla({ tareas, expedienteId }: Props) {
-  const router = useRouter();
-  const [rows, setRows] = useState<Tarea[]>(tareas || []);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [edit, setEdit] = useState<Tarea|null>(null);
+  const [del, setDel] = useState<Tarea|null>(null);
 
-  const totales = useMemo(
-    () =>
-      rows.reduce(
-        (acc, t) => {
-          acc.previstas += Number(t.horas_previstas ?? 0);
-          acc.realizadas += Number(t.horas_realizadas ?? 0);
-          return acc;
-        },
-        { previstas: 0, realizadas: 0 }
-      ),
-    [rows]
-  );
+  const rows = useMemo(()=> (tareas || []).slice().sort((a,b)=>{
+    const da = a.vencimiento ?? ''; const db = b.vencimiento ?? '';
+    return da.localeCompare(db);
+  }),[tareas]);
 
-  async function onDelete(t: Tarea) {
-    if (!confirm(`¿Borrar la tarea "${t.titulo}"? Esta acción no se puede deshacer.`)) return;
-    try {
-      setBusy(t.id);
-      const r = await fetch(`/api/tareas/${t.id}`, { method: 'DELETE' });
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || 'No se pudo borrar la tarea');
-      setRows(prev => prev.filter(x => x.id !== t.id));
-      router.refresh();
-    } catch (e: any) {
-      alert(e.message || String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function onEdit(t: Tarea) {
-    const titulo = prompt('Título', t.titulo);
-    if (titulo === null) return;
-
-    const estado = (prompt('Estado (Pendiente | En curso | Completada)', t.estado) || t.estado) as Tarea['estado'];
-    const prioridad = (prompt('Prioridad (Alta | Media | Baja | dejar vacío)', t.prioridad ?? '') || null) as
-      | 'Alta'
-      | 'Media'
-      | 'Baja'
-      | null;
-
-    const venc = prompt('Vencimiento (YYYY-MM-DD, vacío para quitar)', t.vencimiento ?? '') || null;
-    const hp = Number(prompt('Horas previstas (decimal)', String(t.horas_previstas ?? 0)) ?? t.horas_previstas ?? 0);
-    const hr = Number(prompt('Horas realizadas (decimal)', String(t.horas_realizadas ?? 0)) ?? t.horas_realizadas ?? 0);
-
-    try {
-      setBusy(t.id);
-      const r = await fetch(`/api/tareas/${t.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo,
-          estado,
-          prioridad,
-          vencimiento: venc,
-          horas_previstas: hp,
-          horas_realizadas: hr,
-        }),
-      });
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || 'No se pudo editar la tarea');
-
-      setRows(prev =>
-        prev.map(x =>
-          x.id === t.id
-            ? { ...x, titulo, estado, prioridad, vencimiento: venc, horas_previstas: hp, horas_realizadas: hr }
-            : x
-        )
-      );
-      router.refresh();
-    } catch (e: any) {
-      alert(e.message || String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function toggleCompletada(t: Tarea) {
-    const nuevo = t.estado === 'Completada' ? 'En curso' : 'Completada';
-    try {
-      setBusy(t.id);
-      const r = await fetch(`/api/tareas/${t.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: nuevo }),
-      });
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || 'No se pudo actualizar el estado');
-      setRows(prev => prev.map(x => (x.id === t.id ? { ...x, estado: nuevo } : x)));
-      router.refresh();
-    } catch (e: any) {
-      alert(e.message || String(e));
-    } finally {
-      setBusy(null);
-    }
+  async function onDelete(id: string) {
+    const r = await fetch(`/api/tareas/${id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) alert(j.error || 'Error al borrar');
+    else window.location.reload();
   }
 
   return (
-    <div style={{ overflowX: 'auto', marginTop: 8 }}>
-      <table>
+    <>
+      <table className="w-full border-separate border-spacing-y-1">
         <thead>
-          <tr>
-            <th>Título</th>
-            <th>Estado</th>
-            <th>Prioridad</th>
-            <th>Vencimiento</th>
-            <th>Previstas (h)</th>
-            <th>Realizadas (h)</th>
-            <th>%</th>
-            <th style={{ textAlign: 'center', width: 100 }}>Acciones</th>
+          <tr className="text-left text-sm text-gray-600">
+            <th>Título</th><th>Estado</th><th>Prioridad</th><th>Vencimiento</th>
+            <th>Previstas (h)</th><th>Realizadas (h)</th><th>%</th><th className="w-[90px]">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(t => (
-            <tr key={t.id}>
-              <td>{t.titulo}</td>
-              <td>
-                {t.estado}{' '}
-                <label style={{ marginLeft: 8, userSelect: 'none' }}>
-                  <input
-                    type="checkbox"
-                    checked={t.estado === 'Completada'}
-                    onChange={() => toggleCompletada(t)}
-                    disabled={busy === t.id}
-                    style={{ marginRight: 4 }}
-                  />
-                  compl.
-                </label>
+          {rows.map(t =>
+            <tr key={t.id} className="bg-white border rounded">
+              <td className="py-2 px-2">{t.titulo ?? '—'}</td>
+              <td className="px-2">{t.estado}</td>
+              <td className="px-2">{t.prioridad ?? '—'}</td>
+              <td className="px-2">{t.vencimiento ? t.vencimiento.split('-').reverse().join('/') : '—'}</td>
+              <td className="px-2">{(t.horas_previstas ?? 0).toFixed(2)}</td>
+              <td className="px-2">{(t.horas_realizadas ?? 0).toFixed(2)}</td>
+              <td className="px-2">
+                {((t.horas_realizadas ?? 0) && (t.horas_previstas ?? 0))
+                  ? Math.min(100, Math.round(((t.horas_realizadas ?? 0)/(t.horas_previstas ?? 1))*100))+'%'
+                  : '0%'}
               </td>
-              <td>{t.prioridad ?? '—'}</td>
-              <td>{fmtDate(t.vencimiento)}</td>
-              <td>{Number(t.horas_previstas ?? 0).toFixed(2)}</td>
-              <td>{Number(t.horas_realizadas ?? 0).toFixed(2)}</td>
-              <td>{pct(t.horas_realizadas, t.horas_previstas)}</td>
-              <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                <button
-                  className="btn-ico"
-                  title="Editar tarea"
-                  aria-label="Editar tarea"
-                  disabled={busy === t.id}
-                  onClick={() => onEdit(t)}
-                >
-                  ✏️
-                </button>
-                <button
-                  className="btn-ico"
-                  title="Borrar tarea"
-                  aria-label="Borrar tarea"
-                  disabled={busy === t.id}
-                  onClick={() => onDelete(t)}
-                  style={{ marginLeft: 6 }}
-                >
-                  🗑️
-                </button>
+              <td className="px-2">
+                <div className="flex gap-2">
+                  <button title="Editar" onClick={()=>setEdit(t)} className="px-2 py-1 rounded border">✏️</button>
+                  <button title="Borrar" onClick={()=>setDel(t)}  className="px-2 py-1 rounded border">🗑️</button>
+                </div>
               </td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={8}>Sin tareas.</td>
             </tr>
           )}
+          {rows.length === 0 && (
+            <tr><td colSpan={8} className="text-center py-6 text-gray-500">No hay tareas</td></tr>
+          )}
         </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={4} style={{ textAlign: 'right', fontWeight: 600 }}>
-              Totales:
-            </td>
-            <td>{totales.previstas.toFixed(2)}</td>
-            <td>{totales.realizadas.toFixed(2)}</td>
-            <td>{pct(totales.realizadas, totales.previstas)}</td>
-            <td />
-          </tr>
-        </tfoot>
       </table>
-    </div>
+
+      {edit && (
+        <TareaEditModal
+          tarea={edit}
+          expedienteId={expedienteId}
+          onClose={()=>setEdit(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!del}
+        onClose={()=>setDel(null)}
+        title="Borrar tarea"
+        message={`¿Borrar la tarea "${del?.titulo ?? ''}"? Esta acción no se puede deshacer.`}
+        confirmText="Borrar"
+        onConfirm={()=> del && onDelete(del.id)}
+      />
+    </>
+  );
+}
+
+/* -------- Modal de edición de tarea -------- */
+function TareaEditModal({ tarea, expedienteId, onClose }:{
+  tarea: Tarea, expedienteId: string, onClose: ()=>void
+}) {
+  const [form, setForm] = useState<Tarea>(tarea);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string|null>(null);
+
+  function upd<K extends keyof Tarea>(k: K, v: Tarea[K]) {
+    setForm(f => ({ ...f, [k]: v }));
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/tareas/${form.id}`, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          titulo: form.titulo,
+          estado: form.estado,
+          prioridad: form.prioridad,
+          vencimiento: form.vencimiento,
+          horas_previstas: form.horas_previstas ?? 0,
+          horas_realizadas: form.horas_realizadas ?? 0
+        })
+      });
+      const j = await res.json();
+      if (!res.ok || j.ok === false) throw new Error(j.error || 'Error al guardar');
+      window.location.reload();
+    } catch(e:any){ setErr(e.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open={true} onClose={onClose} title="Editar tarea" widthClass="max-w-lg">
+      <form onSubmit={onSubmit} className="space-y-3">
+        <div>
+          <label className="block text-sm mb-1">Título</label>
+          <input className="w-full border rounded px-3 py-2"
+                 value={form.titulo ?? ''} onChange={e=>upd('titulo', e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm mb-1">Estado</label>
+            <select className="w-full border rounded px-3 py-2"
+                    value={form.estado}
+                    onChange={e=>upd('estado', e.target.value as Tarea['estado'])}>
+              <option>Pendiente</option>
+              <option>En curso</option>
+              <option>Completada</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Prioridad</label>
+            <select className="w-full border rounded px-3 py-2"
+                    value={form.prioridad ?? ''}
+                    onChange={e=>upd('prioridad', (e.target.value || null) as Tarea['prioridad'])}>
+              <option value="">—</option>
+              <option>Alta</option><option>Media</option><option>Baja</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm mb-1">Vencimiento</label>
+            <input type="date" className="w-full border rounded px-3 py-2"
+                   value={form.vencimiento ?? ''} onChange={e=>upd('vencimiento', e.target.value || null)} />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Previstas (h)</label>
+            <input type="number" step="0.25" min="0" className="w-full border rounded px-3 py-2"
+                   value={form.horas_previstas ?? 0} onChange={e=>upd('horas_previstas', Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Realizadas (h)</label>
+            <input type="number" step="0.25" min="0" className="w-full border rounded px-3 py-2"
+                   value={form.horas_realizadas ?? 0} onChange={e=>upd('horas_realizadas', Number(e.target.value))} />
+          </div>
+        </div>
+
+        {err && <p className="text-red-600 text-sm">{err}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded border">Cancelar</button>
+          <button disabled={busy} className="px-4 py-2 rounded bg-[var(--cic-primary)] text-white">
+            {busy ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
