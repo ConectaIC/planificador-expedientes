@@ -3,7 +3,7 @@ export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import FiltrosExpedientes, { Expediente } from '../../components/FiltrosExpedientes';
+import FiltrosExpedientes from '../../components/FiltrosExpedientes';
 import NuevoExpediente from '../../components/NuevoExpediente';
 
 export default async function ExpedientesPage() {
@@ -23,7 +23,7 @@ export default async function ExpedientesPage() {
     );
   }
 
-  // 2) Partes -> totales por expediente_id
+  // 2) Partes -> total horas por expediente
   const { data: partes } = await sb
     .from('partes')
     .select('expediente_id, horas')
@@ -36,7 +36,7 @@ export default async function ExpedientesPage() {
     totalPorId.set(id, (totalPorId.get(id) || 0) + (isNaN(h) ? 0 : h));
   });
 
-  const lista: Expediente[] = (expedientes || []).map((e: any) => ({
+  const lista = (expedientes || []).map((e: any) => ({
     id: e.id,
     codigo: e.codigo,
     proyecto: e.proyecto,
@@ -44,12 +44,12 @@ export default async function ExpedientesPage() {
     fin: e.fin,
     prioridad: e.prioridad,
     estado: e.estado,
-    horasTotales: totalPorId.get(e.id) ?? 0,
+    horasTotales: totalPorId.get(e.id) ?? 0
   }));
 
   return (
     <main>
-      <div style={{display:'flex', alignItems:'center', gap:12}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 12}}>
         <h2 style={{margin:0}}>Expedientes</h2>
         <a href="/tareas"><button>📝 Ver todas las tareas</button></a>
       </div>
