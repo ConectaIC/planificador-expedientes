@@ -1,16 +1,17 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Modal from './Modal';
 
 export type Expediente = {
   id: string;
   codigo: string;
   proyecto: string;
   cliente?: string | null;
-  fin?: string | null;            // YYYY-MM-DD
-  prioridad?: string | null;      // Alta | Media | Baja | null
-  estado?: string | null;         // Pendiente | En curso | Entregado | En Supervisión | Cerrado | null
-  horasTotales?: number;          // suma de partes
+  fin?: string | null;
+  prioridad?: string | null;
+  estado?: string | null;
+  horasTotales?: number;
 };
 
 type Props = { expedientes: Expediente[] };
@@ -25,13 +26,17 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
   const [orden, setOrden]   = useState<'finAsc'|'finDesc'|'codigoAsc'|'codigoDesc'|'horasAsc'|'horasDesc'>('finAsc');
 
   // modal edición
-  const [open, setOpen] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
   const [editing, setEditing] = useState<Expediente | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // modal confirmación borrado
+  const [openDel, setOpenDel] = useState(false);
+  const [delExp, setDelExp] = useState<Expediente | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const filtrados = useMemo(() => {
     let out = (expedientes || []).slice();
-
     const q = query.trim().toLowerCase();
     if (q) {
       out = out.filter(e =>
@@ -40,12 +45,9 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
         (e.cliente || '').toLowerCase().includes(q)
       );
     }
-    if (pri !== 'todas') {
-      out = out.filter(e => (e.prioridad || '').toLowerCase() === pri.toLowerCase());
-    }
-    if (est !== 'todos') {
-      out = out.filter(e => (e.estado || '').toLowerCase() === est.toLowerCase());
-    }
+    if (pri !== 'todas') out = out.filter(e => (e.prioridad || '').toLowerCase() === pri.toLowerCase());
+    if (est !== 'todos') out = out.filter(e => (e.estado || '').toLowerCase() === est.toLowerCase());
+
     switch (orden) {
       case 'finAsc':     out.sort((a,b)=> (a.fin||'9999').localeCompare(b.fin||'9999')); break;
       case 'finDesc':    out.sort((a,b)=> (b.fin||'0000').localeCompare(a.fin||'0000')); break;
@@ -62,16 +64,13 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
   }
 
   // --- Acciones ---
-  function abrirEdicion(e: Expediente) {
-    setEditing(e);
-    setOpen(true);
-  }
+  function abrirEdicion(e: Expediente) { setEditing(e); setOpenEdit(true); }
+  function abrirBorrado(e: Expediente) { setDelExp(e); setOpenDel(true); }
 
   async function guardarEdicion(ev: React.FormEvent<HTMLFormElement>) {
     ev.preventDefault();
     if (!editing) return;
     setSaving(true);
-
     const fd = new FormData(ev.currentTarget);
     const payload = {
       codigo: (fd.get('codigo') as string).trim(),
@@ -81,31 +80,25 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
       prioridad: ((fd.get('prioridad') as string) || '').trim() || null,
       estado: ((fd.get('estado') as string) || '').trim() || null,
     };
-
     const res = await fetch(`/api/expedientes/${editing.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type':'application/json' },
+      method: 'PATCH', headers: { 'Content-Type':'application/json' },
       body: JSON.stringify(payload),
     });
     const j = await res.json();
     setSaving(false);
-    if (!j?.ok) {
-      alert('Error al guardar: ' + (j?.error || 'desconocido'));
-      return;
-    }
-    setOpen(false);
-    setEditing(null);
-    router.refresh(); // datos frescos
+    if (!j?.ok) { alert('Error al guardar: ' + (j?.error || 'desconocido')); return; }
+    setOpenEdit(false); setEditing(null);
+    router.refresh();
   }
 
-  async function borrarExpediente(id: string) {
-    if (!confirm('¿Borrar expediente? Si tiene tareas/partes asociados puede fallar por restricciones.')) return;
-    const res = await fetch(`/api/expedientes/${id}`, { method: 'DELETE' });
+  async function confirmarBorrado() {
+    if (!delExp) return;
+    setDeleting(true);
+    const res = await fetch(`/api/expedientes/${delExp.id}`, { method:'DELETE' });
     const j = await res.json();
-    if (!j?.ok) {
-      alert('No se pudo borrar: ' + (j?.error || 'desconocido'));
-      return;
-    }
+    setDeleting(false);
+    if (!j?.ok) { alert('No se pudo borrar: ' + (j?.error || 'desconocido')); return; }
+    setOpenDel(false); setDelExp(null);
     router.refresh();
   }
 
@@ -116,9 +109,7 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
           <input placeholder="Buscar por código, proyecto o cliente" value={query} onChange={e=>setQuery(e.target.value)} />
           <select value={pri} onChange={e=>setPri(e.target.value as any)}>
             <option value="todas">Prioridad: todas</option>
-            <option value="Alta">Alta</option>
-            <option value="Media">Media</option>
-            <option value="Baja">Baja</option>
+            <option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option>
           </select>
           <select value={est} onChange={e=>setEst(e.target.value as any)}>
             <option value="todos">Estado: todos</option>
@@ -143,14 +134,8 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
         <table>
           <thead>
             <tr>
-              <th>Código</th>
-              <th>Proyecto</th>
-              <th>Cliente</th>
-              <th>Fin</th>
-              <th>Prioridad</th>
-              <th>Estado</th>
-              <th>Horas imputadas</th>
-              <th>Acciones</th>
+              <th>Código</th><th>Proyecto</th><th>Cliente</th><th>Fin</th>
+              <th>Prioridad</th><th>Estado</th><th>Horas imputadas</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -165,7 +150,7 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
                 <td>{(e.horasTotales ?? 0).toFixed(2)} h</td>
                 <td style={{whiteSpace:'nowrap'}}>
                   <button onClick={() => abrirEdicion(e)}>✏️ Editar</button>{' '}
-                  <button onClick={() => borrarExpediente(e.id)}>🗑️ Borrar</button>
+                  <button onClick={() => abrirBorrado(e)}>🗑️ Borrar</button>
                 </td>
               </tr>
             )) : (
@@ -175,23 +160,10 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
         </table>
       </section>
 
-      {/* Modal de edición simple */}
-      {open && editing && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position:'fixed', inset:0, background:'rgba(0,0,0,.35)',
-            display:'grid', placeItems:'center', padding:16, zIndex:50
-          }}
-          onClick={() => { if (!saving) { setOpen(false); setEditing(null); } }}
-        >
-          <form
-            onSubmit={guardarEdicion}
-            onClick={e=>e.stopPropagation()}
-            style={{ background:'#fff', padding:16, borderRadius:12, minWidth:320, width:'min(720px, 96vw)', display:'grid', gap:10 }}
-          >
-            <h3>Editar expediente</h3>
+      {/* Modal edición */}
+      <Modal open={openEdit} onClose={()=>!saving && (setOpenEdit(false), setEditing(null))} title="Editar expediente">
+        {editing && (
+          <form onSubmit={guardarEdicion} style={{display:'grid', gap:10}}>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
               <label>Código
                 <input name="codigo" defaultValue={editing.codigo} required />
@@ -210,9 +182,7 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
               <label>Prioridad
                 <select name="prioridad" defaultValue={editing.prioridad ?? ''}>
                   <option value="">—</option>
-                  <option value="Alta">Alta</option>
-                  <option value="Media">Media</option>
-                  <option value="Baja">Baja</option>
+                  <option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option>
                 </select>
               </label>
               <label>Estado
@@ -226,14 +196,25 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
                 </select>
               </label>
             </div>
-
-            <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:8}}>
-              <button type="button" onClick={()=>{ if (!saving){ setOpen(false); setEditing(null);} }}>Cancelar</button>
-              <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar cambios'}</button>
+            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+              <button type="button" onClick={()=>!saving && (setOpenEdit(false), setEditing(null))}>Cancelar</button>
+              <button disabled={saving} type="submit">{saving?'Guardando…':'Guardar cambios'}</button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* Modal confirmación de borrado */}
+      <Modal open={openDel} onClose={()=>!deleting && (setOpenDel(false), setDelExp(null))} title="Confirmar borrado">
+        <p>¿Seguro que quieres borrar el expediente <strong>{delExp?.codigo}</strong>?
+          {` `}
+          {`(Si tiene tareas/partes asociados puede fallar por restricciones de BD).`}
+        </p>
+        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+          <button onClick={()=>!deleting && (setOpenDel(false), setDelExp(null))}>Cancelar</button>
+          <button disabled={deleting} onClick={confirmarBorrado}>{deleting?'Borrando…':'Borrar definitivamente'}</button>
         </div>
-      )}
+      </Modal>
     </>
   );
 }
