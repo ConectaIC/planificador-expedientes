@@ -1,20 +1,8 @@
 'use client';
+
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Tarea } from '@/types/tareas'; // ← import sólo de tipo
-
-type Props = { tareas: Tarea[]; expedienteId?: string };
-
-/** 👉 Tipo exportado para poder usarlo en otras páginas */
-export type Tarea = {
-  id: string;
-  titulo: string;
-  estado: 'Pendiente' | 'En curso' | 'Completada';
-  prioridad: 'Alta' | 'Media' | 'Baja' | null;
-  vencimiento?: string | null;
-  horas_previstas?: number | null;
-  horas_realizadas?: number | null;
-};
+import type { Tarea } from '@/types/tareas';
 
 type Props = {
   tareas: Tarea[];
