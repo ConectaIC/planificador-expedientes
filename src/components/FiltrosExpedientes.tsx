@@ -8,10 +8,10 @@ export type Expediente = {
   codigo: string;
   proyecto: string;
   cliente?: string | null;
-  fin?: string | null;
-  prioridad?: string | null;
-  estado?: string | null;
-  horasTotales?: number;
+  fin?: string | null;            // YYYY-MM-DD
+  prioridad?: string | null;      // Alta | Media | Baja | null
+  estado?: string | null;         // Pendiente | En curso | Entregado | En Supervisión | Cerrado | null
+  horasTotales?: number;          // suma de partes
 };
 
 type Props = { expedientes: Expediente[] };
@@ -37,6 +37,8 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
 
   const filtrados = useMemo(() => {
     let out = (expedientes || []).slice();
+
+    // filtro texto
     const q = query.trim().toLowerCase();
     if (q) {
       out = out.filter(e =>
@@ -45,9 +47,12 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
         (e.cliente || '').toLowerCase().includes(q)
       );
     }
+
+    // filtros select
     if (pri !== 'todas') out = out.filter(e => (e.prioridad || '').toLowerCase() === pri.toLowerCase());
     if (est !== 'todos') out = out.filter(e => (e.estado || '').toLowerCase() === est.toLowerCase());
 
+    // orden
     switch (orden) {
       case 'finAsc':     out.sort((a,b)=> (a.fin||'9999').localeCompare(b.fin||'9999')); break;
       case 'finDesc':    out.sort((a,b)=> (b.fin||'0000').localeCompare(a.fin||'0000')); break;
@@ -109,7 +114,9 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
           <input placeholder="Buscar por código, proyecto o cliente" value={query} onChange={e=>setQuery(e.target.value)} />
           <select value={pri} onChange={e=>setPri(e.target.value as any)}>
             <option value="todas">Prioridad: todas</option>
-            <option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option>
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
           </select>
           <select value={est} onChange={e=>setEst(e.target.value as any)}>
             <option value="todos">Estado: todos</option>
@@ -134,8 +141,14 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
         <table>
           <thead>
             <tr>
-              <th>Código</th><th>Proyecto</th><th>Cliente</th><th>Fin</th>
-              <th>Prioridad</th><th>Estado</th><th>Horas imputadas</th><th>Acciones</th>
+              <th>Código</th>
+              <th>Proyecto</th>
+              <th>Cliente</th>
+              <th>Fin</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th>Horas imputadas</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -148,9 +161,23 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
                 <td>{e.prioridad || '—'}</td>
                 <td>{e.estado || '—'}</td>
                 <td>{(e.horasTotales ?? 0).toFixed(2)} h</td>
-                <td style={{whiteSpace:'nowrap'}}>
-                  <button onClick={() => abrirEdicion(e)}>✏️ Editar</button>{' '}
-                  <button onClick={() => abrirBorrado(e)}>🗑️ Borrar</button>
+                <td style={{whiteSpace:'nowrap', display:'flex', gap:8}}>
+                  <button
+                    onClick={() => abrirEdicion(e)}
+                    title="Editar"
+                    aria-label="Editar expediente"
+                    style={{padding:'4px 6px'}}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => abrirBorrado(e)}
+                    title="Borrar"
+                    aria-label="Borrar expediente"
+                    style={{padding:'4px 6px'}}
+                  >
+                    🗑️
+                  </button>
                 </td>
               </tr>
             )) : (
@@ -182,7 +209,9 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
               <label>Prioridad
                 <select name="prioridad" defaultValue={editing.prioridad ?? ''}>
                   <option value="">—</option>
-                  <option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Media">Media</option>
+                  <option value="Baja">Baja</option>
                 </select>
               </label>
               <label>Estado
@@ -206,9 +235,8 @@ export default function FiltrosExpedientes({ expedientes }: Props) {
 
       {/* Modal confirmación de borrado */}
       <Modal open={openDel} onClose={()=>!deleting && (setOpenDel(false), setDelExp(null))} title="Confirmar borrado">
-        <p>¿Seguro que quieres borrar el expediente <strong>{delExp?.codigo}</strong>?
-          {` `}
-          {`(Si tiene tareas/partes asociados puede fallar por restricciones de BD).`}
+        <p>¿Seguro que quieres borrar el expediente <strong>{delExp?.codigo}</strong>? {` `}
+          (Si tiene tareas/partes asociados puede fallar por restricciones de BD).
         </p>
         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
           <button onClick={()=>!deleting && (setOpenDel(false), setDelExp(null))}>Cancelar</button>
