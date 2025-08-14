@@ -1,90 +1,93 @@
-// src/app/expedientes/[codigo]/page.tsx
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
-
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import TareasTabla, { Tarea } from '../../../components/TareasTabla';
+import TareasTabla, { type Tarea } from '../../../components/TareasTabla';
 import NuevaTareaModal from '../../../components/NuevaTareaModal';
 
 type PageProps = { params: { codigo: string } };
 
+function fmtDate(d?: string | null) {
+  if (!d) return '—';
+  const ymd = d.includes('T') ? d.split('T')[0] : d;
+  const [y, m, day] = ymd.split('-');
+  return `${day}/${m}/${y}`;
+}
+
 export default async function ExpedienteDetallePage({ params }: PageProps) {
-  const codigo = decodeURIComponent(params.codigo);
+  const { codigo } = params;
   const sb = supabaseAdmin();
 
-  // 1) Expediente
-  const { data: expediente, error: eExp } = await sb
+  // 1) Cargamos el expediente por código
+  const { data: expList, error: expErr } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
     .eq('codigo', codigo)
-    .maybeSingle();
+    .limit(1);
 
-  if (eExp) {
+  if (expErr) {
     return (
       <main>
-        <h2>Expediente: {codigo}</h2>
-        <p>Error al cargar expediente: {eExp.message}</p>
+        <h2>Expediente</h2>
+        <p>Error al cargar expediente: {expErr.message}</p>
       </main>
     );
   }
-  if (!expediente) {
+  const exp = expList?.[0];
+  if (!exp) {
     return (
       <main>
-        <h2>Expediente: {codigo}</h2>
-        <p>No se encontró el expediente.</p>
+        <h2>Expediente</h2>
+        <p>No existe expediente con código {codigo}.</p>
       </main>
     );
   }
 
   // 2) Tareas del expediente
-  const { data: tareasData, error: eTar } = await sb
+  const { data: tareasData, error: tarErr } = await sb
     .from('tareas')
-    .select('id, titulo, estado, prioridad, horas_previstas, horas_realizadas, vencimiento')
-    .eq('expediente_id', expediente.id)
-    .order('vencimiento', { ascending: true });
+    .select('id, titulo, estado, prioridad, vencimiento, horas_previstas, horas_realizadas')
+    .eq('expediente_id', exp.id)
+    .order('vencimiento', { ascending: true })
+    .order('titulo', { ascending: true });
+
+  if (tarErr) {
+    return (
+      <main>
+        <h2>{exp.codigo} — {exp.proyecto}</h2>
+        <p>Error al cargar tareas: {tarErr.message}</p>
+      </main>
+    );
+  }
 
   const tareas: Tarea[] = (tareasData || []).map((t: any) => ({
     id: t.id,
     titulo: t.titulo,
-    estado: t.estado,
-    prioridad: t.prioridad,
+    estado: (t.estado || 'Pendiente') as Tarea['estado'],
+    prioridad: t.prioridad as Tarea['prioridad'],
+    vencimiento: t.vencimiento,
     horas_previstas: t.horas_previstas,
     horas_realizadas: t.horas_realizadas,
-    vencimiento: t.vencimiento
   }));
-
-  function fmtFecha(d?: string | null) {
-    return d ? d.split('T')[0].split('-').reverse().join('/') : '—';
-  }
 
   return (
     <main>
-      <div style={{display:'flex', gap:12, alignItems:'center', marginBottom: 8}}>
-        <a href="/expedientes" style={{ display: 'inline-block' }}>← Volver a expedientes</a>
-        <a href="/tareas"><button>📝 Ver todas las tareas</button></a>
+      <h2>
+        {exp.codigo} — {exp.proyecto}
+      </h2>
+      <p style={{ marginTop: 4, color: '#274e3b' }}>
+        <b>Cliente:</b> {exp.cliente ?? '—'} · <b>Fin:</b> {fmtDate(exp.fin)} · <b>Prioridad:</b> {exp.prioridad ?? '—'} ·{' '}
+        <b>Estado:</b> {exp.estado ?? '—'}
+      </p>
+
+      {/* Botón / modal para nueva tarea */}
+      <div style={{ margin: '12px 0' }}>
+        <NuevaTareaModal expedienteId={exp.id} />
       </div>
 
-      <h2>{expediente.codigo}</h2>
-      <p style={{ margin: 0, opacity: 0.9 }}>{expediente.proyecto}</p>
+      {/* Tabla de tareas */}
+      <TareasTabla tareas={tareas} expedienteId={exp.id} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
-        <div><strong>Cliente:</strong><br />{expediente.cliente || '—'}</div>
-        <div><strong>Fin previsto:</strong><br />{fmtFecha(expediente.fin)}</div>
-        <div><strong>Prioridad:</strong><br />{expediente.prioridad || '—'}</div>
-        <div><strong>Estado:</strong><br />{expediente.estado || '—'}</div>
+      <div style={{ marginTop: 16 }}>
+        <a href="/expedientes">← Volver a expedientes</a>
       </div>
-
-      <div style={{display:'flex', alignItems:'center', gap:8, marginTop: 20}}>
-        <h3 style={{ margin: 0 }}>Tareas</h3>
-        {/* Botón ➕ para crear tarea vinculada a este expediente */}
-        <NuevaTareaModal expedienteId={expediente.id} />
-      </div>
-
-      {eTar ? (
-        <p>Error al cargar tareas: {eTar.message}</p>
-      ) : (
-        <TareasTabla tareasIniciales={tareas} />
-      )}
     </main>
   );
 }
