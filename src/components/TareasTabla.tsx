@@ -6,97 +6,92 @@ import Modal from './Modal';
 export type Tarea = {
   id: string;
   titulo: string;
-  estado?: string | null;          // Pendiente | En curso | Entregado | En Supervisión | Cerrado | null
-  prioridad?: string | null;       // Alta | Media | Baja | null
+  estado?: string | null;
+  prioridad?: string | null;
   horas_previstas?: number | null;
   horas_realizadas?: number | null;
-  vencimiento?: string | null;     // YYYY-MM-DD
+  vencimiento?: string | null; // ISO date o null
 };
 
-function fmtFechaES(d?: string | null) {
-  if (!d) return '—';
-  // mostramos sin new Date para evitar TZ: YYYY-MM-DD -> DD/MM/YYYY
-  const ymd = d.split('T')[0];
-  const [y,m,day] = ymd.split('-');
-  if (!y || !m || !day) return '—';
-  return `${day}/${m}/${y}`;
-}
-function pct(hReal?: number | null, hPrev?: number | null) {
-  const r = Number(hReal || 0);
-  const p = Number(hPrev || 0);
-  if (!p || isNaN(p)) return '—';
-  return `${Math.round((r / p) * 100)}%`;
+function toDateInputValue(d?: string | null) {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 export default function TareasTabla({ tareasIniciales }: { tareasIniciales: Tarea[] }) {
   const router = useRouter();
-
-  // ordenar por vencimiento asc
-  const tareas = useMemo(() => {
-    const arr = (tareasIniciales || []).slice();
-    arr.sort((a, b) => {
-      const aa = a.vencimiento ? a.vencimiento : '9999-12-31';
-      const bb = b.vencimiento ? b.vencimiento : '9999-12-31';
-      return aa.localeCompare(bb);
-    });
-    return arr;
-  }, [tareasIniciales]);
-
-  // estado modales
+  const [q, setQ] = useState('');
   const [openEdit, setOpenEdit] = useState(false);
-  const [editing, setEditing] = useState<Tarea | null>(null);
   const [saving, setSaving] = useState(false);
-
   const [openDel, setOpenDel] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [delTarea, setDelTarea] = useState<Tarea | null>(null);
+  const [editing, setEditing] = useState<Tarea | null>(null);
+  const [delId, setDelId] = useState<string | null>(null);
 
-  // acciones
-  function abrirEdicion(t: Tarea) { setEditing(t); setOpenEdit(true); }
-  function abrirBorrado(t: Tarea) { setDelTarea(t); setOpenDel(true); }
+  const lista = useMemo(()=>{
+    const src = (tareasIniciales||[]).slice();
+    const qq = q.trim().toLowerCase();
+    if (!qq) return src;
+    return src.filter(t =>
+      (t.titulo||'').toLowerCase().includes(qq) ||
+      (t.estado||'').toLowerCase().includes(qq) ||
+      (t.prioridad||'').toLowerCase().includes(qq)
+    );
+  },[tareasIniciales,q]);
 
-  async function guardarEdicion(ev: React.FormEvent<HTMLFormElement>) {
-    ev.preventDefault();
+  function abrirEdicion(t: Tarea){ setEditing(t); setOpenEdit(true); }
+  function abrirBorrado(id: string){ setDelId(id); setOpenDel(true); }
+
+  async function guardar(e: React.FormEvent<HTMLFormElement>){
+    e.preventDefault();
     if (!editing) return;
     setSaving(true);
-    const fd = new FormData(ev.currentTarget);
+    const fd = new FormData(e.currentTarget);
     const payload = {
-      titulo: (fd.get('titulo') as string).trim(),
-      estado: ((fd.get('estado') as string) || '').trim() || null,
-      prioridad: ((fd.get('prioridad') as string) || '').trim() || null,
-      horas_previstas: (() => {
-        const v = (fd.get('horas_previstas') as string).trim();
+      titulo: (fd.get('titulo') as string)?.trim(),
+      estado: (fd.get('estado') as string) || null,
+      prioridad: (fd.get('prioridad') as string) || null,
+      horas_previstas: (()=> {
+        const v = (fd.get('horas_previstas') as string)?.trim();
         return v ? Number(v) : null;
       })(),
-      vencimiento: ((fd.get('vencimiento') as string) || '').trim() || null,
+      vencimiento: (fd.get('vencimiento') as string) || null
     };
-
     const res = await fetch(`/api/tareas/${editing.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify(payload),
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
     });
     const j = await res.json();
     setSaving(false);
-    if (!j?.ok) { alert('Error al guardar: ' + (j?.error || 'desconocido')); return; }
+    if (!j?.ok) { alert('Error al guardar: ' + (j?.error||'desconocido')); return; }
     setOpenEdit(false); setEditing(null);
     router.refresh();
   }
 
-  async function confirmarBorrado() {
-    if (!delTarea) return;
+  async function confirmarBorrado(){
+    if (!delId) return;
     setDeleting(true);
-    const res = await fetch(`/api/tareas/${delTarea.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/tareas/${delId}`, { method:'DELETE' });
     const j = await res.json();
     setDeleting(false);
-    if (!j?.ok) { alert('No se pudo borrar: ' + (j?.error || 'desconocido')); return; }
-    setOpenDel(false); setDelTarea(null);
+    if (!j?.ok) { alert('No se pudo borrar: ' + (j?.error||'desconocido')); return; }
+    setOpenDel(false); setDelId(null);
     router.refresh();
   }
 
   return (
     <>
-      <section style={{ overflowX: 'auto' }}>
+      <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8, margin:'8px 0'}}>
+        <input placeholder="Filtrar por título, estado o prioridad" value={q} onChange={e=>setQ(e.target.value)} />
+      </div>
+
+      <section style={{overflowX:'auto'}}>
         <table>
           <thead>
             <tr>
@@ -106,54 +101,33 @@ export default function TareasTabla({ tareasIniciales }: { tareasIniciales: Tare
               <th>Vencimiento</th>
               <th>Previstas (h)</th>
               <th>Realizadas (h)</th>
-              <th>%</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {tareas.length ? tareas.map(t => (
+            {(lista||[]).map(t=>(
               <tr key={t.id}>
                 <td>{t.titulo}</td>
-                <td>{t.estado ?? '—'}</td>
-                <td>{t.prioridad ?? '—'}</td>
-                <td>{fmtFechaES(t.vencimiento)}</td>
-                <td>{typeof t.horas_previstas === 'number' ? t.horas_previstas : (t.horas_previstas ?? '—')}</td>
-                <td>{typeof t.horas_realizadas === 'number' ? Number(t.horas_realizadas).toFixed(2) : (t.horas_realizadas ?? 0)}</td>
-                <td>{pct(t.horas_realizadas, t.horas_previstas)}</td>
-                <td style={{whiteSpace:'nowrap', display:'flex', gap:8}}>
-                  <button
-                    onClick={() => abrirEdicion(t)}
-                    title="Editar"
-                    aria-label="Editar tarea"
-                    style={{padding:'4px 6px'}}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => abrirBorrado(t)}
-                    title="Borrar"
-                    aria-label="Borrar tarea"
-                    style={{padding:'4px 6px'}}
-                  >
-                    🗑️
-                  </button>
+                <td>{t.estado || '—'}</td>
+                <td>{t.prioridad || '—'}</td>
+                <td>{t.vencimiento ? t.vencimiento.split('T')[0].split('-').reverse().join('/') : '—'}</td>
+                <td>{t.horas_previstas ?? '—'}</td>
+                <td>{typeof t.horas_realizadas === 'number' ? t.horas_realizadas.toFixed(2) : (t.horas_realizadas ?? 0)}</td>
+                <td style={{display:'flex', gap:8}}>
+                  <button title="Editar" aria-label="Editar" onClick={()=>abrirEdicion(t)} style={{padding:'4px 6px'}}>✏️</button>
+                  <button title="Borrar" aria-label="Borrar" onClick={()=>abrirBorrado(t.id)} style={{padding:'4px 6px'}}>🗑️</button>
                 </td>
               </tr>
-            )) : (
-              <tr><td colSpan={8}>No hay tareas registradas.</td></tr>
-            )}
+            ))}
+            {!lista?.length && <tr><td colSpan={7}>Sin tareas.</td></tr>}
           </tbody>
         </table>
       </section>
 
       {/* Modal edición */}
-      <Modal
-        open={openEdit}
-        onClose={()=>!saving && (setOpenEdit(false), setEditing(null))}
-        title="Editar tarea"
-      >
+      <Modal open={openEdit} onClose={()=>!saving && (setOpenEdit(false), setEditing(null))} title="Editar tarea">
         {editing && (
-          <form onSubmit={guardarEdicion} style={{display:'grid', gap:10}}>
+          <form onSubmit={guardar} style={{display:'grid', gap:10}}>
             <label>Título
               <input name="titulo" defaultValue={editing.titulo} required />
             </label>
@@ -181,28 +155,28 @@ export default function TareasTabla({ tareasIniciales }: { tareasIniciales: Tare
               <label>Horas previstas
                 <input name="horas_previstas" type="number" step="0.25" min="0" defaultValue={editing.horas_previstas ?? ''} />
               </label>
-              <label>Vencimiento (YYYY-MM-DD)
-                <input name="vencimiento" defaultValue={editing.vencimiento?.split('T')[0] ?? ''} placeholder="2025-09-01" />
+              <label>Vencimiento
+                <input
+                  name="vencimiento"
+                  type="date"
+                  defaultValue={toDateInputValue(editing.vencimiento)}
+                />
               </label>
             </div>
             <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
               <button type="button" onClick={()=>!saving && (setOpenEdit(false), setEditing(null))}>Cancelar</button>
-              <button disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar cambios'}</button>
+              <button disabled={saving} type="submit">{saving?'Guardando…':'Guardar cambios'}</button>
             </div>
           </form>
         )}
       </Modal>
 
-      {/* Modal confirmación de borrado */}
-      <Modal
-        open={openDel}
-        onClose={()=>!deleting && (setOpenDel(false), setDelTarea(null))}
-        title="Confirmar borrado"
-      >
-        <p>¿Seguro que quieres borrar la tarea <strong>{delTarea?.titulo}</strong>?</p>
+      {/* Modal borrado */}
+      <Modal open={openDel} onClose={()=>!deleting && (setOpenDel(false), setDelId(null))} title="Confirmar borrado">
+        <p>¿Seguro que quieres borrar esta tarea?</p>
         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
-          <button onClick={()=>!deleting && (setOpenDel(false), setDelTarea(null))}>Cancelar</button>
-          <button disabled={deleting} onClick={confirmarBorrado}>{deleting ? 'Borrando…' : 'Borrar definitivamente'}</button>
+          <button onClick={()=>!deleting && (setOpenDel(false), setDelId(null))}>Cancelar</button>
+          <button disabled={deleting} onClick={confirmarBorrado}>{deleting?'Borrando…':'Borrar definitivamente'}</button>
         </div>
       </Modal>
     </>
