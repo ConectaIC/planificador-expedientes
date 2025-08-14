@@ -1,398 +1,281 @@
 // src/app/resumen/page.tsx
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
-
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
-function iso(d: Date) { return d.toISOString().split('T')[0]; }
-function fmt(d?: string | null) {
+// utilidades simples
+function fmtDateISO(d?: string | null) {
   if (!d) return '—';
-  const ymd = d.split('T')[0] ?? d;
-  const [y, m, dd] = ymd.split('-');
-  return (y && m && dd) ? `${dd}/${m}/${y}` : d;
+  const iso = d.includes('T') ? d.split('T')[0] : d;
+  const [y, m, dd] = iso.split('-');
+  return `${dd}/${m}/${y}`;
 }
-
-function startOfWeek(d = new Date()) {
-  const t = new Date(d);
-  const day = t.getDay(); // 0=Dom
-  const diff = (day === 0 ? -6 : 1 - day); // lunes
-  t.setDate(t.getDate() + diff);
-  t.setHours(0,0,0,0);
-  return t;
+function toISO(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
+const HOY = new Date();
+const ISO_HOY = toISO(HOY);
+const ISO_7 = toISO(new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 7));
+const ISO_14 = toISO(new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 14));
 
-export default async function ResumenPage() {
+export default async function ResumenAsistente() {
   const sb = supabaseAdmin();
-  const hoy = new Date();
-  const ayer = new Date(hoy); ayer.setDate(hoy.getDate() - 1);
-  const hace3 = new Date(hoy); hace3.setDate(hoy.getDate() - 3);
-  const hace30 = new Date(hoy); hace30.setDate(hoy.getDate() - 30);
-  const prox7 = new Date(hoy); prox7.setDate(hoy.getDate() + 7);
-  const prox14 = new Date(hoy); prox14.setDate(hoy.getDate() + 14);
-  const semanaIni = startOfWeek(hoy);
 
-  // --- 0) Métricas rápidas ----------------------------------------
-  // Expedientes activos (no cerrados)
-  const { data: expsAct } = await sb
+  // 1) EXPEDIENTES (activos y no activos)
+  const { data: expedientes, error: e1 } = await sb
     .from('expedientes')
-    .select('id, codigo, prioridad, estado, fin')
-    .not('estado', 'in', '(Cerrado)')
+    .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
     .order('fin', { ascending: true });
 
-  // Horas semana (sum partes desde lunes)
-  const { data: partesSemana } = await sb
-    .from('partes')
-    .select('horas, fecha')
-    .gte('fecha', iso(semanaIni));
+  if (e1) {
+    return (
+      <main>
+        <h2>Resumen para asistente</h2>
+        <p>Error al cargar expedientes: {e1.message}</p>
+      </main>
+    );
+  }
 
-  const horasSemana = (partesSemana ?? []).reduce((s:any, p:any) => s + Number(p.horas || 0), 0);
-
-  // --- 1) Últimos partes (20) -------------------------------------
-  const { data: ultPartes } = await sb
-    .from('partes')
-    .select(`
-      id, fecha, inicio, fin, horas, comentario,
-      expediente:expediente_id ( codigo ),
-      tarea:tarea_id ( titulo )
-    `)
-    .order('fecha', { ascending: false })
-    .order('inicio', { ascending: false })
-    .limit(20);
-
-  // --- 2) Tareas pendientes con vto <= 7 días ----------------------
-  const { data: tareasPend7 } = await sb
-    .from('tareas')
-    .select(`
-      id, titulo, estado, prioridad, vencimiento, horas_previstas, horas_realizadas,
-      expedientes:expediente_id ( codigo )
-    `)
-    .in('estado', ['Pendiente', 'En curso', 'En Supervisión'])
-    .gte('vencimiento', iso(hoy))
-    .lte('vencimiento', iso(prox7))
-    .order('vencimiento', { ascending: true });
-
-  // --- 3) Tareas completadas últimos 3 días ------------------------
-  const { data: tareasCompl3 } = await sb
-    .from('tareas')
-    .select(`
-      id, titulo, estado, prioridad, vencimiento,
-      expedientes:expediente_id ( codigo )
-    `)
-    .in('estado', ['Entregado', 'Cerrado'])
-    .gte('vencimiento', iso(hace3))
-    .order('vencimiento', { ascending: false });
-
-  // --- 4) Expedientes creados o modificados últimas 24 h -----------
-  let expNuevos24: any[] = [];
-  let expMod24: any[] = [];
-  try {
-    const { data: eN } = await sb
-      .from('expedientes')
-      .select('id, codigo, proyecto, fin, prioridad, estado, created_at')
-      .gte('created_at', ayer.toISOString());
-    expNuevos24 = eN || [];
-  } catch {}
-  try {
-    const { data: eM } = await sb
-      .from('expedientes')
-      .select('id, codigo, proyecto, fin, prioridad, estado, updated_at')
-      .gte('updated_at', ayer.toISOString());
-    expMod24 = (eM || []).filter((x:any) => !expNuevos24.some(n => n.id === x.id));
-  } catch {}
-
-  // --- 5) Próximas entregas (14 días) -------------------------------
-  const { data: expProx14 } = await sb
-    .from('expedientes')
-    .select('id, codigo, proyecto, fin, prioridad, estado')
-    .gte('fin', iso(hoy))
-    .lte('fin', iso(prox14))
-    .order('fin', { ascending: true });
-
-  const { data: tarProx14 } = await sb
-    .from('tareas')
-    .select('id, titulo, vencimiento, prioridad, estado, expedientes:expediente_id(codigo)')
-    .gte('vencimiento', iso(hoy))
-    .lte('vencimiento', iso(prox14))
-    .order('vencimiento', { ascending: true });
-
-  // --- 6) Atrasos ---------------------------------------------------
-  const { data: expLate } = await sb
-    .from('expedientes')
-    .select('id, codigo, proyecto, fin, prioridad, estado')
-    .lt('fin', iso(hoy))
-    .not('estado', 'in', '(Entregado, Cerrado)')
-    .order('fin', { ascending: true });
-
-  const { data: tarLate } = await sb
-    .from('tareas')
-    .select('id, titulo, vencimiento, prioridad, estado, expedientes:expediente_id(codigo)')
-    .lt('vencimiento', iso(hoy))
-    .not('estado', 'in', '(Entregado, Cerrado)')
-    .order('vencimiento', { ascending: true });
-
-  // --- 7) Expedientes no cerrados por prioridad ---------------------
-  // Prios: Alta, Media, Baja, Null (sin prioridad)
-  const noCerrados = (expsAct ?? []).map((e:any) => ({
-    ...e,
-    prioKey: (e.prioridad ?? '').toLowerCase() || 'null'
-  }));
-  const bucket = {
-    alta: [] as any[], media: [] as any[], baja: [] as any[], null: [] as any[]
-  };
-  noCerrados.forEach((e:any) => {
-    if (e.prioKey === 'alta') bucket.alta.push(e);
-    else if (e.prioKey === 'media') bucket.media.push(e);
-    else if (e.prioKey === 'baja') bucket.baja.push(e);
-    else bucket.null.push(e);
+  const activos = (expedientes || []).filter(e => {
+    const est = (e.estado || '').toLowerCase();
+    return est !== 'entregado'.toLowerCase() && est !== 'cerrado'.toLowerCase();
   });
 
-  // --- Super Prompt -------------------------------------------------
+  // 2) TAREAS (sólo de expedientes activos)
+  const activeIds = activos.map(e => e.id);
+  let tareas: any[] = [];
+  if (activeIds.length) {
+    const { data, error } = await sb
+      .from('tareas')
+      .select('id, titulo, estado, prioridad, vencimiento, horas_previstas, horas_realizadas, expediente_id')
+      .in('expediente_id', activeIds);
+    if (error) {
+      return (
+        <main>
+          <h2>Resumen para asistente</h2>
+          <p>Error al cargar tareas: {error.message}</p>
+        </main>
+      );
+    }
+    tareas = data || [];
+  }
+
+  // 3) PARTES recientes (últimos 7 días)
+  const { data: partesRecientes, error: e3 } = await sb
+    .from('partes')
+    .select('id, fecha, horas, comentario, expediente_id, tarea_id')
+    .gte('fecha', ISO_7) // últimos 7 días (incluye hoy+)
+    .order('fecha', { ascending: false })
+    .limit(100);
+
+  if (e3) {
+    return (
+      <main>
+        <h2>Resumen para asistente</h2>
+        <p>Error al cargar partes: {e3.message}</p>
+      </main>
+    );
+  }
+
+  // 4) Cálculos / agrupaciones
+  const mapExp = new Map((expedientes || []).map(e => [e.id, e]));
+  const mapCodigo = (id?: string | null) => {
+    const e = id ? mapExp.get(id) : null;
+    return e ? `${e.codigo || ''}${e.proyecto ? ' — ' + e.proyecto : ''}` : '—';
+  };
+
+  // KPIs
+  const kpiTotalActivos = activos.length;
+  const kpiEntregas7 = activos.filter(e => e.fin && e.fin <= ISO_7).length;
+  const kpiEntregas14 = activos.filter(e => e.fin && e.fin > ISO_7 && e.fin <= ISO_14).length;
+  const kpiAtrasados = activos.filter(e => e.fin && e.fin < ISO_HOY).length;
+
+  // Entregas próximas (expedientes activos)
+  const entregas7 = activos
+    .filter(e => e.fin && e.fin <= ISO_7)
+    .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+  const entregas14 = activos
+    .filter(e => e.fin && e.fin > ISO_7 && e.fin <= ISO_14)
+    .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+  const entregasAtrasadas = activos
+    .filter(e => e.fin && e.fin < ISO_HOY)
+    .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+
+  // Tareas por estado / vencimiento (sólo de expedientes activos)
+  const tareasPend = tareas.filter(t => (t.estado || '').toLowerCase() === 'pendiente');
+  const tareasCurso = tareas.filter(t => (t.estado || '').toLowerCase() === 'en curso');
+  const tareasDone = tareas.filter(t => (t.estado || '').toLowerCase() === 'completada');
+
+  const tareasVence7 = tareas.filter(t => t.vencimiento && t.vencimiento <= ISO_7);
+  const tareasVence14 = tareas.filter(t => t.vencimiento && t.vencimiento > ISO_7 && t.vencimiento <= ISO_14);
+  const tareasAtraso = tareas.filter(t => t.vencimiento && t.vencimiento < ISO_HOY && (t.estado || '').toLowerCase() !== 'completada');
+
+  // Backlog: expedientes activos sin partes en los últimos 14 días
+  // (evitar caer en el olvido)
+  const { data: partes14 } = await sb
+    .from('partes')
+    .select('id, expediente_id, fecha')
+    .gte('fecha', ISO_14);
+
+  const activosSinActividad14 = activos.filter(e => {
+    const hay = (partes14 || []).some(p => p.expediente_id === e.id);
+    return !hay;
+  });
+
+  // 5) “Super prompt” para pegar en tu chat y planificar
   const superPrompt = [
-    `Contexto para planificación (generado ${fmt(hoy.toISOString())}):`,
+    `# Resumen para planificación`,
+    `Fecha de informe: ${fmtDateISO(ISO_HOY)}`,
     ``,
-    `Métricas rápidas:`,
-    `- Expedientes activos (no cerrados): ${expsAct?.length ?? 0}`,
-    `- Horas registradas esta semana: ${horasSemana.toFixed(2)} h`,
+    `## KPIs`,
+    `- Expedientes activos: ${kpiTotalActivos}`,
+    `- Entregas ≤7 días: ${kpiEntregas7}`,
+    `- Entregas 8–14 días: ${kpiEntregas14}`,
+    `- Entregas atrasadas: ${kpiAtrasados}`,
     ``,
-    `Últimos partes:`,
-    ...(ultPartes ?? []).map((p:any)=>`- ${fmt(p.fecha)} ${p.inicio}-${p.fin} · ${Number(p.horas||0).toFixed(2)}h · ${p.expediente?.codigo ?? '—'} · ${p.tarea?.titulo ?? '—'} · ${p.comentario ?? ''}`),
+    `## Entregas próximas (≤7 días)`,
+    ...entregas7.map(e => `- ${e.codigo} — ${e.proyecto || ''} · Fin: ${fmtDateISO(e.fin)} · Prioridad: ${e.prioridad || '—'}`),
     ``,
-    `Tareas urgentes (vencen ≤ 7 días):`,
-    ...(tareasPend7 ?? []).map((t:any)=>`- ${fmt(t.vencimiento)} · ${t.expedientes?.codigo ?? '—'} · ${t.titulo} · Pri: ${t.prioridad ?? '—'} · Estado: ${t.estado ?? '—'}`),
+    `## Entregas próximas (8–14 días)`,
+    ...entregas14.map(e => `- ${e.codigo} — ${e.proyecto || ''} · Fin: ${fmtDateISO(e.fin)} · Prioridad: ${e.prioridad || '—'}`),
     ``,
-    `Próximas entregas (≤14 días):`,
-    `• Expedientes:`,
-    ...(expProx14 ?? []).map((e:any)=>`  - ${fmt(e.fin)} · ${e.codigo} · ${e.proyecto} · Pri: ${e.prioridad ?? '—'} · Estado: ${e.estado ?? '—'}`),
-    `• Tareas:`,
-    ...(tarProx14 ?? []).map((t:any)=>`  - ${fmt(t.vencimiento)} · ${t.expedientes?.codigo ?? '—'} · ${t.titulo} · Pri: ${t.prioridad ?? '—'} · Estado: ${t.estado ?? '—'}`),
+    `## Entregas atrasadas`,
+    ...entregasAtrasadas.map(e => `- ${e.codigo} — ${e.proyecto || ''} · Fin: ${fmtDateISO(e.fin)} · Estado: ${e.estado || '—'}`),
     ``,
-    `Atrasos:`,
-    `• Expedientes:`,
-    ...(expLate ?? []).map((e:any)=>`  - ${fmt(e.fin)} · ${e.codigo} · ${e.proyecto} · Pri: ${e.prioridad ?? '—'} · Estado: ${e.estado ?? '—'}`),
-    `• Tareas:`,
-    ...(tarLate ?? []).map((t:any)=>`  - ${fmt(t.vencimiento)} · ${t.expedientes?.codigo ?? '—'} · ${t.titulo} · Pri: ${t.prioridad ?? '—'} · Estado: ${t.estado ?? '—'}`),
+    `## Tareas pendientes`,
+    ...tareasPend.map(t => `- ${t.titulo} · Exp: ${mapCodigo(t.expediente_id)} · Vence: ${fmtDateISO(t.vencimiento)} · Prev: ${t.horas_previstas ?? '—'}h`),
     ``,
-    `Expedientes no cerrados (por prioridad):`,
-    `• Alta (${bucket.alta.length})`,
-    ...bucket.alta.map((e:any)=>`  - ${e.codigo} · Fin: ${fmt(e.fin)} · Estado: ${e.estado ?? '—'}`),
-    `• Media (${bucket.media.length})`,
-    ...bucket.media.map((e:any)=>`  - ${e.codigo} · Fin: ${fmt(e.fin)} · Estado: ${e.estado ?? '—'}`),
-    `• Baja (${bucket.baja.length})`,
-    ...bucket.baja.map((e:any)=>`  - ${e.codigo} · Fin: ${fmt(e.fin)} · Estado: ${e.estado ?? '—'}`),
-    `• Sin prioridad (${bucket.null.length})`,
-    ...bucket.null.map((e:any)=>`  - ${e.codigo} · Fin: ${fmt(e.fin)} · Estado: ${e.estado ?? '—'}`),
+    `## Tareas en curso`,
+    ...tareasCurso.map(t => `- ${t.titulo} · Exp: ${mapCodigo(t.expediente_id)} · Vence: ${fmtDateISO(t.vencimiento)} · Avance: ${(Number(t.horas_realizadas)||0)}/${(Number(t.horas_previstas)||0)}h`),
     ``,
-    `Instrucciones fijas (no olvidar):`,
-    `- Reprogramar automáticamente todas las tareas no acabadas.`,
-    `- Mantener control mensual de expedientes no productivos (GEST, RRSS, ADMON, FORM).`,
-    `- Visitas de obra: se registran como tareas del expediente o por indicación.`,
-    `- Dedicaciones mínimas:`,
-    `  • GEST – Gestión y Organización: 3–4 h/semana`,
-    `  • RRSS – Community Management: según carga y disponibilidad`,
-    `  • ADMON – Administración y Contabilidad: 1 h/semana (4 h la primera semana de cada mes)`,
-    `  • FORM – Formación/Jornadas: cuando se indique`,
+    `## Tareas completadas (recientes)`,
+    ...tareasDone
+      .sort((a,b) => (a.vencimiento||'').localeCompare(b.vencimiento||''))
+      .slice(0,10)
+      .map(t => `- ${t.titulo} · Exp: ${mapCodigo(t.expediente_id)} · Cierre: ${fmtDateISO(t.vencimiento)} · Total: ${t.horas_realizadas ?? '—'}h`),
     ``,
-    `Solicito (responder con planificación):`,
-    `1) Plan de prioridades para hoy y próximos 7 días (incluye GEST/RRSS/ADMON según reglas).`,
-    `2) Orden de trabajo recomendado y horas estimadas por bloque.`,
-    `3) Reprogramación de tareas no finalizadas y aviso de riesgos de plazo.`,
+    `## Partes recientes (≤7 días)`,
+    ...(partesRecientes || []).map(p =>
+      `- ${fmtDateISO(p.fecha)} · ${mapCodigo(p.expediente_id)} · ${p.horas ?? '—'}h · ${p.comentario || ''}`
+    ),
+    ``,
+    `## Expedientes activos SIN actividad (≤14 días)`,
+    ...activosSinActividad14.map(e => `- ${e.codigo} — ${e.proyecto || ''} · Fin: ${fmtDateISO(e.fin)} · Prioridad: ${e.prioridad || '—'}`),
+    ``,
+    `## Instrucciones de planificación`,
+    `- Expedir agenda semanal priorizando entregas cercanas y tareas críticas.`,
+    `- Reprogramar tareas no finalizadas y detectar cuellos de botella.`,
+    `- Incluir bloques de no productivos:`,
+    `  · GEST (3–4 h/sem) · RRSS (según conveniencia) · Admon (1 h/sem; 1ª semana 4 h) · Form (cuando se indique).`,
+    `- Considerar visitas de obra cuando aparezcan en las tareas del expediente.`,
   ].join('\n');
 
+  // 6) Render
   return (
     <main>
       <h2>Resumen para asistente</h2>
 
-      {/* Métricas rápidas */}
+      {/* KPIs */}
+      <section className="kpis">
+        <div className="kpi"><div className="kpi-num">{kpiTotalActivos}</div><div className="kpi-label">Expedientes activos</div></div>
+        <div className="kpi"><div className="kpi-num">{kpiEntregas7}</div><div className="kpi-label">Entregas ≤ 7 días</div></div>
+        <div className="kpi"><div className="kpi-num">{kpiEntregas14}</div><div className="kpi-label">Entregas 8–14 días</div></div>
+        <div className="kpi warn"><div className="kpi-num">{kpiAtrasados}</div><div className="kpi-label">Entregas atrasadas</div></div>
+      </section>
+
+      {/* Entregas próximas */}
       <section>
-        <h3>Métricas rápidas</h3>
+        <h3>Entregas próximas (≤ 7 días)</h3>
         <ul>
-          <li>Expedientes activos (no cerrados): <strong>{expsAct?.length ?? 0}</strong></li>
-          <li>Horas registradas esta semana: <strong>{horasSemana.toFixed(2)} h</strong></li>
+          {entregas7.length === 0 && <li>—</li>}
+          {entregas7.map(e => (
+            <li key={e.id}>{e.codigo} — {e.proyecto || '—'} · Fin {fmtDateISO(e.fin)} · {e.prioridad || '—'}</li>
+          ))}
+        </ul>
+
+        <h3>Entregas próximas (8–14 días)</h3>
+        <ul>
+          {entregas14.length === 0 && <li>—</li>}
+          {entregas14.map(e => (
+            <li key={e.id}>{e.codigo} — {e.proyecto || '—'} · Fin {fmtDateISO(e.fin)} · {e.prioridad || '—'}</li>
+          ))}
+        </ul>
+
+        <h3>Entregas atrasadas</h3>
+        <ul>
+          {entregasAtrasadas.length === 0 && <li>—</li>}
+          {entregasAtrasadas.map(e => (
+            <li key={e.id}>{e.codigo} — {e.proyecto || '—'} · Fin {fmtDateISO(e.fin)} · Estado {e.estado || '—'}</li>
+          ))}
         </ul>
       </section>
 
-      {/* Últimos partes */}
+      {/* Tareas */}
       <section>
-        <h3>Últimos partes (20)</h3>
-        <table>
-          <thead><tr><th>Fecha</th><th>Horario</th><th>Horas</th><th>Expediente</th><th>Tarea</th><th>Comentario</th></tr></thead>
-          <tbody>
-            {(ultPartes||[]).map((p:any)=>(
-              <tr key={p.id}>
-                <td>{fmt(p.fecha)}</td>
-                <td>{p.inicio}–{p.fin}</td>
-                <td>{Number(p.horas||0).toFixed(2)}</td>
-                <td>{p.expediente?.codigo || '—'}</td>
-                <td>{p.tarea?.titulo || '—'}</td>
-                <td>{p.comentario || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h3>Tareas pendientes</h3>
+        <ul>
+          {tareasPend.length === 0 && <li>—</li>}
+          {tareasPend.map(t => (
+            <li key={t.id}>
+              {t.titulo} · {mapCodigo(t.expediente_id)} · Vence {fmtDateISO(t.vencimiento)} · Prev {t.horas_previstas ?? '—'}h
+            </li>
+          ))}
+        </ul>
+
+        <h3>Tareas en curso</h3>
+        <ul>
+          {tareasCurso.length === 0 && <li>—</li>}
+          {tareasCurso.map(t => (
+            <li key={t.id}>
+              {t.titulo} · {mapCodigo(t.expediente_id)} · Vence {fmtDateISO(t.vencimiento)} · {Number(t.horas_realizadas)||0}/{Number(t.horas_previstas)||0} h
+            </li>
+          ))}
+        </ul>
+
+        <h3>Tareas completadas (recientes)</h3>
+        <ul>
+          {tareasDone.length === 0 && <li>—</li>}
+          {tareasDone
+            .sort((a,b)=>(a.vencimiento||'').localeCompare(b.vencimiento||''))
+            .slice(0,10)
+            .map(t => (
+              <li key={t.id}>
+                {t.titulo} · {mapCodigo(t.expediente_id)} · Cierre {fmtDateISO(t.vencimiento)} · {t.horas_realizadas ?? '—'} h
+              </li>
+          ))}
+        </ul>
       </section>
 
-      {/* Tareas urgentes */}
+      {/* Partes recientes */}
       <section>
-        <h3>Tareas urgentes (vencen ≤ 7 días)</h3>
-        <table>
-          <thead><tr><th>Vencimiento</th><th>Expediente</th><th>Tarea</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(tareasPend7||[]).map((t:any)=>(
-              <tr key={t.id}>
-                <td>{fmt(t.vencimiento)}</td>
-                <td>{t.expedientes?.codigo || '—'}</td>
-                <td>{t.titulo}</td>
-                <td>{t.prioridad || '—'}</td>
-                <td>{t.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h3>Partes recientes (≤ 7 días)</h3>
+        <ul>
+          {(partesRecientes||[]).length === 0 && <li>—</li>}
+          {(partesRecientes||[]).map(p => (
+            <li key={p.id}>
+              {fmtDateISO(p.fecha)} · {mapCodigo(p.expediente_id)} · {p.horas ?? '—'} h · {p.comentario || ''}
+            </li>
+          ))}
+        </ul>
       </section>
 
-      {/* Tareas completadas últimos 3 días */}
+      {/* Backlog */}
       <section>
-        <h3>Tareas completadas (últimos 3 días)</h3>
-        <table>
-          <thead><tr><th>Vencimiento</th><th>Expediente</th><th>Tarea</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(tareasCompl3||[]).map((t:any)=>(
-              <tr key={t.id}>
-                <td>{fmt(t.vencimiento)}</td>
-                <td>{t.expedientes?.codigo || '—'}</td>
-                <td>{t.titulo}</td>
-                <td>{t.prioridad || '—'}</td>
-                <td>{t.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h3>Expedientes activos SIN actividad en ≤ 14 días</h3>
+        <ul>
+          {activosSinActividad14.length === 0 && <li>—</li>}
+          {activosSinActividad14.map(e => (
+            <li key={e.id}>{e.codigo} — {e.proyecto || '—'} · Fin {fmtDateISO(e.fin)} · {e.prioridad || '—'}</li>
+          ))}
+        </ul>
       </section>
 
-      {/* Próximas entregas */}
+      {/* Super prompt para copiar/pegar */}
       <section>
-        <h3>Próximas entregas (14 días)</h3>
-        <h4>Expedientes</h4>
-        <table>
-          <thead><tr><th>Fin</th><th>Expediente</th><th>Proyecto</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(expProx14||[]).map((e:any)=>(
-              <tr key={e.id}>
-                <td>{fmt(e.fin)}</td>
-                <td>{e.codigo}</td>
-                <td>{e.proyecto}</td>
-                <td>{e.prioridad || '—'}</td>
-                <td>{e.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h4 style={{marginTop:12}}>Tareas</h4>
-        <table>
-          <thead><tr><th>Vencimiento</th><th>Expediente</th><th>Tarea</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(tarProx14||[]).map((t:any)=>(
-              <tr key={t.id}>
-                <td>{fmt(t.vencimiento)}</td>
-                <td>{t.expedientes?.codigo || '—'}</td>
-                <td>{t.titulo}</td>
-                <td>{t.prioridad || '—'}</td>
-                <td>{t.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      {/* Atrasos */}
-      <section>
-        <h3>Atrasos</h3>
-        <h4>Expedientes</h4>
-        <table>
-          <thead><tr><th>Fin</th><th>Expediente</th><th>Proyecto</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(expLate||[]).map((e:any)=>(
-              <tr key={e.id}>
-                <td>{fmt(e.fin)}</td>
-                <td>{e.codigo}</td>
-                <td>{e.proyecto}</td>
-                <td>{e.prioridad || '—'}</td>
-                <td>{e.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h4 style={{marginTop:12}}>Tareas</h4>
-        <table>
-          <thead><tr><th>Vencimiento</th><th>Expediente</th><th>Tarea</th><th>Prioridad</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(tarLate||[]).map((t:any)=>(
-              <tr key={t.id}>
-                <td>{fmt(t.vencimiento)}</td>
-                <td>{t.expedientes?.codigo || '—'}</td>
-                <td>{t.titulo}</td>
-                <td>{t.prioridad || '—'}</td>
-                <td>{t.estado || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      {/* No cerrados por prioridad */}
-      <section>
-        <h3>Expedientes no cerrados por prioridad</h3>
-
-        <h4>Alta ({bucket.alta.length})</h4>
-        <table>
-          <thead><tr><th>Expediente</th><th>Fin</th><th>Estado</th></tr></thead>
-          <tbody>
-            {bucket.alta.map((e:any)=>(
-              <tr key={e.id}><td>{e.codigo}</td><td>{fmt(e.fin)}</td><td>{e.estado || '—'}</td></tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h4 style={{marginTop:12}}>Media ({bucket.media.length})</h4>
-        <table>
-          <thead><tr><th>Expediente</th><th>Fin</th><th>Estado</th></tr></thead>
-          <tbody>
-            {bucket.media.map((e:any)=>(
-              <tr key={e.id}><td>{e.codigo}</td><td>{fmt(e.fin)}</td><td>{e.estado || '—'}</td></tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h4 style={{marginTop:12}}>Baja ({bucket.baja.length})</h4>
-        <table>
-          <thead><tr><th>Expediente</th><th>Fin</th><th>Estado</th></tr></thead>
-          <tbody>
-            {bucket.baja.map((e:any)=>(
-              <tr key={e.id}><td>{e.codigo}</td><td>{fmt(e.fin)}</td><td>{e.estado || '—'}</td></tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h4 style={{marginTop:12}}>Sin prioridad ({bucket.null.length})</h4>
-        <table>
-          <thead><tr><th>Expediente</th><th>Fin</th><th>Estado</th></tr></thead>
-          <tbody>
-            {bucket.null.map((e:any)=>(
-              <tr key={e.id}><td>{e.codigo}</td><td>{fmt(e.fin)}</td><td>{e.estado || '—'}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      {/* Super prompt listo para copiar */}
-      <section style={{marginTop:20}}>
-        <h3>Super prompt (copiar y pegar aquí en el chat)</h3>
-        <p style={{margin:'6px 0 8px', opacity:.8}}>
-          Selecciona el cuadro y copia el contenido completo. Después pégalo aquí para que te entregue la planificación optimizada.
-        </p>
-        <textarea readOnly value={superPrompt} style={{width:'100%', minHeight:260}} />
+        <h3>Super prompt para el asistente</h3>
+        <p style={{marginTop:0}}>Copia todo el bloque siguiente y pégalo en el chat para que te genere la planificación:</p>
+        <textarea readOnly value={superPrompt} rows={18} style={{width:'100%'}} />
       </section>
     </main>
   );
