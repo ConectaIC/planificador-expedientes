@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         vencimiento: body.vencimiento ?? undefined
       })
       .eq('id', params.id)
-      .select('id');
+      .select('id'); // ← filas afectadas
 
     if (error) throw error;
     if (!data || data.length === 0) {
@@ -35,7 +35,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
       .from('tareas')
       .delete()
       .eq('id', params.id)
-      .select('id');
+      .select('id'); // ← filas afectadas
 
     if (error) throw error;
     if (!data || data.length === 0) {
