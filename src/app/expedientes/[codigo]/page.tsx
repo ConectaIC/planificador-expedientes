@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import TareasTabla, { type Tarea } from '../../../components/TareasTabla';
+import TareasTabla from '../../../components/TareasTabla';
 import NuevaTareaModal from '../../../components/NuevaTareaModal';
+import type { Tarea } from '@/types/tareas';
 
 type PageProps = { params: { codigo: string } };
 
@@ -15,7 +16,7 @@ export default async function ExpedienteDetallePage({ params }: PageProps) {
   const { codigo } = params;
   const sb = supabaseAdmin();
 
-  // 1) Cargamos el expediente por código
+  // 1) Cargar expediente por código
   const { data: expList, error: expErr } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
