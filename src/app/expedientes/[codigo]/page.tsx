@@ -1,78 +1,81 @@
-export const dynamic = 'force-dynamic';
+// src/app/expedientes/[codigo]/page.tsx
 export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import TareasTabla from '../../../components/TareasTabla';
-import NuevaTarea from '../../../components/NuevaTarea';
+import TareasTabla, { Tarea } from '../../../components/TareasTabla';
 
-function fmt(d?: string | null) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return isNaN(+dt) ? '—' : dt.toLocaleDateString('es-ES');
-}
+type PageProps = { params: { codigo: string } };
 
-export default async function ExpDetalle({ params }: { params: { codigo: string } }) {
+export default async function ExpedienteDetallePage({ params }: PageProps) {
+  const codigo = decodeURIComponent(params.codigo);
   const sb = supabaseAdmin();
 
-  // 1) Expediente por código
-  const { data: exp, error: eExp } = await sb
+  // 1) Buscar expediente por código
+  const { data: expediente, error: eExp } = await sb
     .from('expedientes')
-    .select('*')
-    .eq('codigo', params.codigo)
+    .select('id, codigo, proyecto, cliente, fin, prioridad, estado')
+    .eq('codigo', codigo)
     .maybeSingle();
 
   if (eExp) {
     return (
       <main>
-        <h2>Expediente</h2>
-        <p>Error: {eExp.message}</p>
-        <p><a href="/expedientes">← Volver a expedientes</a></p>
+        <h2>Expediente: {codigo}</h2>
+        <p>Error al cargar expediente: {eExp.message}</p>
       </main>
     );
   }
-  if (!exp) {
+  if (!expediente) {
     return (
       <main>
-        <h2>Expediente</h2>
-        <p>No encontrado: {params.codigo}</p>
-        <p><a href="/expedientes">← Volver a expedientes</a></p>
+        <h2>Expediente: {codigo}</h2>
+        <p>No se encontró el expediente.</p>
       </main>
     );
   }
 
-  // 2) Tareas del expediente
-  const { data: tareas, error: eTar } = await sb
+  // 2) Cargar tareas del expediente
+  const { data: tareasData, error: eTar } = await sb
     .from('tareas')
     .select('id, titulo, estado, prioridad, horas_previstas, horas_realizadas, vencimiento')
-    .eq('expediente_id', exp.id)
+    .eq('expediente_id', expediente.id)
     .order('vencimiento', { ascending: true });
 
-  if (eTar) {
-    return (
-      <main>
-        <h2>{exp.codigo} — {exp.proyecto}</h2>
-        <p>Error cargando tareas: {eTar.message}</p>
-        <p><a href="/expedientes">← Volver a expedientes</a></p>
-      </main>
-    );
+  const tareas: Tarea[] = (tareasData || []).map((t: any) => ({
+    id: t.id,
+    titulo: t.titulo,
+    estado: t.estado,
+    prioridad: t.prioridad,
+    horas_previstas: t.horas_previstas,
+    horas_realizadas: t.horas_realizadas,
+    vencimiento: t.vencimiento
+  }));
+
+  function fmtFin(d?: string | null) {
+    return d ? d.split('T')[0].split('-').reverse().join('/') : '—';
   }
 
   return (
     <main>
-      <h2>{exp.codigo} — {exp.proyecto}</h2>
-      <p>
-        Cliente: {exp.cliente ?? '—'} · Fin: {fmt(exp.fin)} ·
-        Prioridad: {exp.prioridad ?? '—'} · Estado: {exp.estado ?? '—'}
-      </p>
+      <a href="/expedientes" style={{ display: 'inline-block', marginBottom: 8 }}>← Volver a expedientes</a>
 
-      <h3>Tareas pendientes</h3>
-      <TareasTabla tareasIniciales={tareas || []} />
+      <h2>{expediente.codigo}</h2>
+      <p style={{ margin: 0, opacity: 0.9 }}>{expediente.proyecto}</p>
 
-      <NuevaTarea codigo={exp.codigo} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
+        <div><strong>Cliente:</strong><br />{expediente.cliente || '—'}</div>
+        <div><strong>Fin previsto:</strong><br />{fmtFin(expediente.fin)}</div>
+        <div><strong>Prioridad:</strong><br />{expediente.prioridad || '—'}</div>
+        <div><strong>Estado:</strong><br />{expediente.estado || '—'}</div>
+      </div>
 
-      <p style={{ marginTop: 16 }}>
-        <a href="/expedientes">← Volver a expedientes</a>
-      </p>
+      <h3 style={{ marginTop: 20 }}>Tareas</h3>
+      {eTar ? (
+        <p>Error al cargar tareas: {eTar.message}</p>
+      ) : (
+        <TareasTabla tareasIniciales={tareas} />
+      )}
     </main>
   );
 }
-
