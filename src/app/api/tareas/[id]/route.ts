@@ -4,24 +4,45 @@ import { supabaseAdmin } from '../../../../lib/supabaseAdmin';
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await req.json();
-    const updates: any = {};
-
-    if (body.estado !== undefined) updates.estado = String(body.estado);
-    if (body.horas_realizadas !== undefined) {
-      const n = Number(body.horas_realizadas);
-      updates.horas_realizadas = isNaN(n) ? null : n;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ ok: false, error: 'Sin cambios' }, { status: 400 });
-    }
-
     const sb = supabaseAdmin();
-    const { error } = await sb.from('tareas').update(updates).eq('id', params.id);
-    if (error) throw error;
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 400 });
+    const { data, error } = await sb
+      .from('tareas')
+      .update({
+        titulo: body.titulo ?? undefined,
+        estado: body.estado ?? undefined,
+        prioridad: body.prioridad ?? undefined,
+        horas_previstas: body.horas_previstas ?? undefined,
+        vencimiento: body.vencimiento ?? undefined
+      })
+      .eq('id', params.id)
+      .select('id');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      return NextResponse.json({ ok:false, error:'No se encontró la tarea o no se actualizó ninguna fila.' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, updated: data.length });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e.message }, { status: 400 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb
+      .from('tareas')
+      .delete()
+      .eq('id', params.id)
+      .select('id');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      return NextResponse.json({ ok:false, error:'No se encontró la tarea o no se borró ninguna fila.' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, deleted: data.length });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e.message }, { status: 400 });
   }
 }
