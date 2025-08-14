@@ -1,7 +1,9 @@
 'use client';
-
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Tarea } from '@/types/tareas'; // ← import sólo de tipo
+
+type Props = { tareas: Tarea[]; expedienteId?: string };
 
 /** 👉 Tipo exportado para poder usarlo en otras páginas */
 export type Tarea = {
