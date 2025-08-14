@@ -3,6 +3,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from './Modal';
 
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 export default function NuevaTareaModal({ expedienteId }: { expedienteId: string }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,6 +53,7 @@ export default function NuevaTareaModal({ expedienteId }: { expedienteId: string
           <label>Título
             <input name="titulo" required placeholder="Definir alcance, redactar memoria…" />
           </label>
+
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
             <label>Estado
               <select name="estado" defaultValue="">
@@ -65,14 +74,21 @@ export default function NuevaTareaModal({ expedienteId }: { expedienteId: string
               </select>
             </label>
           </div>
+
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
             <label>Horas previstas
               <input name="horas_previstas" type="number" step="0.25" min="0" placeholder="6" />
             </label>
-            <label>Vencimiento (YYYY-MM-DD)
-              <input name="vencimiento" placeholder="2025-09-01" />
+            <label>Vencimiento
+              <input
+                name="vencimiento"
+                type="date"
+                defaultValue=""
+                min={todayISO()}
+              />
             </label>
           </div>
+
           <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
             <button type="button" onClick={()=>!saving && setOpen(false)}>Cancelar</button>
             <button disabled={saving} type="submit">{saving ? 'Creando…' : 'Crear'}</button>
