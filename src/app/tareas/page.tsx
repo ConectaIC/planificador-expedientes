@@ -4,14 +4,14 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne } from '../../lib/relations';
+import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
 
 type Props = {
   searchParams?: {
-    q?: string;                 // proyecto, expediente (código), cliente, título
+    q?: string;      // proyecto, expediente (código), cliente, título
     estado?: string;
     prioridad?: string;
-    ordenar?: 'vencimiento';
-    dir?: 'asc' | 'desc';
+    orden?: string;  // "vencimiento:asc|desc" | "horas:asc|desc"
   };
 };
 
@@ -21,10 +21,8 @@ export default async function TareasPage({ searchParams }: Props) {
   const q = (searchParams?.q || '').trim().toLowerCase();
   const estado = (searchParams?.estado || '').trim();
   const prioridad = (searchParams?.prioridad || '').trim();
-  const ordenar = (searchParams?.ordenar as any) || 'vencimiento';
-  const dir = (searchParams?.dir as any) || 'asc';
+  const orden = (searchParams?.orden || 'vencimiento:asc').trim();
 
-  // Cargamos tareas + expediente para filtros cruzados
   const { data, error } = await sb
     .from('tareas')
     .select(`
@@ -42,10 +40,8 @@ export default async function TareasPage({ searchParams }: Props) {
   if (error) {
     return (
       <main>
-        <div className="card">
-          <h2>Tareas</h2>
-        </div>
-        <p className="error-state" style={{ marginTop: 12 }}>Error al cargar tareas: {error.message}</p>
+        <div className="card"><h2>Tareas</h2></div>
+        <p className="error-state">Error al cargar tareas: {error.message}</p>
       </main>
     );
   }
@@ -61,45 +57,43 @@ export default async function TareasPage({ searchParams }: Props) {
     return hitQ && hitEstado && hitPrioridad;
   });
 
+  const [campo, dir] = (orden.includes(':') ? orden : 'vencimiento:asc').split(':') as [
+    'vencimiento' | 'horas',
+    'asc' | 'desc'
+  ];
   tareas = tareas.sort((a: any, b: any) => {
-    const va = a.vencimiento || '';
-    const vb = b.vencimiento || '';
-    return String(va).localeCompare(String(vb)) * (dir === 'desc' ? -1 : 1);
+    let va: any = '';
+    let vb: any = '';
+    switch (campo) {
+      case 'vencimiento':
+        va = a.vencimiento || '';
+        vb = b.vencimiento || '';
+        break;
+      case 'horas': {
+        const ha = Number(a.horas_realizadas ?? 0);
+        const hb = Number(b.horas_realizadas ?? 0);
+        va = Number.isFinite(ha) ? ha : 0;
+        vb = Number.isFinite(hb) ? hb : 0;
+        break;
+      }
+    }
+    const cmp =
+      typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb));
+    return cmp * (dir === 'desc' ? -1 : 1);
   });
 
   const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
   const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
   const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
-  const controls: React.CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 };
   const fmt2 = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
 
   return (
     <main>
       <div className="card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginBottom: 10 }}>Tareas</h2>
-        <form method="get" style={controls}>
-          <input name="q" placeholder="Buscar por proyecto, expediente, cliente o título" defaultValue={q} />
-          <select name="estado" defaultValue={estado}>
-            <option value="">Estado (todos)</option>
-            <option>Pendiente</option>
-            <option>En curso</option>
-            <option>Completada</option>
-          </select>
-          <select name="prioridad" defaultValue={prioridad}>
-            <option value="">Prioridad (todas)</option>
-            <option>Baja</option>
-            <option>Media</option>
-            <option>Alta</option>
-          </select>
-          <select name="ordenar" defaultValue={ordenar}>
-            <option value="vencimiento">Ordenar por vencimiento</option>
-          </select>
-          <select name="dir" defaultValue={dir}>
-            <option value="asc">Ascendente</option>
-            <option value="desc">Descendente</option>
-          </select>
-          <button type="submit">Aplicar</button>
-        </form>
+        <h2 style={{ marginBottom: 8 }}>Tareas</h2>
+        <FiltrosTareasGlobal orderParamName="orden" />
       </div>
 
       <table>
@@ -114,6 +108,7 @@ export default async function TareasPage({ searchParams }: Props) {
             <th style={th}>Prioridad</th>
             <th style={th}>Horas prev.</th>
             <th style={th}>Horas real.</th>
+            <th style={th}>Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -127,27 +122,28 @@ export default async function TareasPage({ searchParams }: Props) {
                     <a href={`/expedientes/${encodeURIComponent(exp.codigo)}`} style={link}>
                       {exp.codigo}
                     </a>
-                  ) : (
-                    '—'
-                  )}
+                  ) : '—'}
                 </td>
                 <td style={td}>{exp?.proyecto || '—'}</td>
                 <td style={td}>{exp?.cliente || '—'}</td>
                 <td style={td}>
-                  <a href={`/tareas/${encodeURIComponent(String(t.id))}`} style={link}>
-                    {t.titulo || '—'}
-                  </a>
+                  {/* Aquí no se crean tareas; solo ver/editar/borrar */}
+                  <span>{t.titulo || '—'}</span>
                 </td>
                 <td style={td}>{t.estado || '—'}</td>
                 <td style={td}>{t.prioridad || '—'}</td>
                 <td style={td}>{fmt2(t.horas_previstas)}</td>
                 <td style={td}>{fmt2(t.horas_realizadas)}</td>
+                <td style={td}>
+                  <a href={`/tareas/${t.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
+                  <a href={`/tareas/${t.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
+                </td>
               </tr>
             );
           })}
           {!tareas.length && (
             <tr>
-              <td colSpan={9} style={{ ...td, textAlign: 'center', opacity: 0.7 }}>
+              <td colSpan={10} style={{ ...td, textAlign: 'center', opacity: 0.7 }}>
                 No hay tareas con esos criterios.
               </td>
             </tr>
