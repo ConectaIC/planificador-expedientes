@@ -15,11 +15,11 @@ export default async function ExpedienteDetallePage({ params }: Params) {
     .eq('codigo', codigo)
     .single();
 
-  if (errExp) {
+  if (errExp || !exp) {
     return (
       <main>
         <div className="card" style={{ marginBottom: 12 }}><h2>Expediente</h2></div>
-        <p className="error-state">No se pudo cargar el expediente “{codigo}”: {errExp.message}</p>
+        <p className="error-state">No se pudo cargar el expediente “{codigo}”: {errExp?.message || 'No encontrado'}</p>
         <p style={{ marginTop: 8 }}><a href="/expedientes" className="btn-link">← Volver al listado</a></p>
       </main>
     );
@@ -86,7 +86,6 @@ export default async function ExpedienteDetallePage({ params }: Params) {
                 <td style={td}>{fmt2(t.horas_previstas)}</td>
                 <td style={td}>{fmt2(t.horas_realizadas)}</td>
                 <td style={td}>
-                  {/* Próxima iteración: modales (editar/borrar) */}
                   <a href={`/tareas/${t.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
                   <a href={`/tareas/${t.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
                 </td>
