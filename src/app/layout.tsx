@@ -1,39 +1,53 @@
 // src/app/layout.tsx
 import './globals.css';
-import Link from 'next/link';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Planificador de Expedientes — Conecta Ingenieros',
+  title: 'Planificador de Expedientes - Conecta Ingenieros Civiles',
   description: 'Gestión de expedientes, tareas y partes',
+  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const headerStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '10px 16px',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    background: 'var(--cic-bg, #fafafa)',
+  };
+  const navStyle: React.CSSProperties = { display: 'flex', gap: 10, flexWrap: 'wrap' };
+  const linkStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    borderRadius: 8,
+    textDecoration: 'none',
+    color: 'var(--cic-text, #222)',
+    border: '1px solid transparent',
+  };
+  const linkHover: React.CSSProperties = {
+    borderColor: 'var(--cic-border, #ddd)',
+    background: 'var(--cic-bg-card, #fff)',
+  };
+
   return (
     <html lang="es">
       <body>
-        <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'var(--cic-bg, #f7f7fb)', borderBottom: '1px solid #e5e7eb' }}>
-          <nav style={{ maxWidth: 1200, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-              <img src="/logo_cic.png" alt="Conecta Ingenieros" width={36} height={36} style={{ borderRadius: 8, objectFit: 'contain' }} />
-              <span style={{ fontWeight: 700, color: 'var(--cic-primary, #005bbb)' }}>Conecta Ingenieros</span>
-            </Link>
-            <div style={{ flex: 1 }} />
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Link className="navlink" href="/">Inicio</Link>
-              <Link className="navlink" href="/expedientes">Expedientes</Link>
-              <Link className="navlink" href="/tareas">Tareas</Link>
-              <Link className="navlink" href="/partes">Partes</Link>
-              <span style={{ width: 12 }} />
-              <Link className="navlink strong" href="/resumen-diario">Resumen diario</Link>
-              <Link className="navlink" href="/resumen-mensual">Resumen mensual</Link>
-            </div>
+        <header style={headerStyle}>
+          <strong>Conecta Ingenieros · Planificador</strong>
+          <nav style={navStyle}>
+            {/* Nota: sin styled-jsx; usamos inline styles simples */}
+            <Link href="/" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Inicio</Link>
+            <Link href="/expedientes" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Expedientes</Link>
+            <Link href="/tareas" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Tareas</Link>
+            <Link href="/partes" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Partes</Link>
+            <Link href="/resumen-diario" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Resumen diario</Link>
+            <Link href="/resumen-mensual" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Resumen mensual</Link>
           </nav>
         </header>
-
-        <main style={{ maxWidth: 1200, margin: '16px auto', padding: '0 16px' }}>
-          {children}
-        </main>
+        <main style={{ minHeight: 'calc(100vh - 60px)' }}>{children}</main>
       </body>
     </html>
   );

@@ -2,54 +2,55 @@
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import PartesTabla from '../../components/PartesTabla';
-
-function fmt(d?: string|null) {
-  if (!d) return null;
-  return d.includes('T') ? d.split('T')[0] : d;
-}
+import PartesUI from '../../components/PartesUI';
 
 export default async function PartesPage() {
   const sb = supabaseAdmin();
 
-  // Últimos 50 partes (con expediente y título de tarea)
-  const { data, error } = await sb
+  // Expedientes para el selector
+  const { data: expedientes, error: errExp } = await sb
+    .from('expedientes')
+    .select('id, codigo, proyecto')
+    .order('codigo', { ascending: true });
+
+  // Tareas para construir el mapa id -> título (lo usa PartesUI al mostrar filas)
+  const { data: tareas, error: errTar } = await sb
+    .from('tareas')
+    .select('id, titulo')
+    .order('titulo', { ascending: true });
+
+  // Últimos partes para el listado inicial
+  const { data: partes, error: errPar } = await sb
     .from('partes')
-    .select(`
-      id, fecha, hora_inicio, hora_fin, horas, comentario, tarea_id,
-      expedientes ( codigo, proyecto ),
-      tarea:tarea_id ( titulo )
-    `)
+    .select('id, fecha, hora_inicio, hora_fin, horas, comentario, expediente_id, tarea_id')
     .order('fecha', { ascending: false })
     .order('hora_inicio', { ascending: false })
-    .limit(50);
+    .limit(100);
 
-  if (error) {
+  if (errExp || errTar || errPar) {
     return (
-      <main>
+      <main style={{ padding: 16 }}>
         <h2>Partes</h2>
-        <p>Error al cargar: {error.message}</p>
+        {errExp && <p>Error al cargar expedientes: {errExp.message}</p>}
+        {errTar && <p>Error al cargar tareas: {errTar.message}</p>}
+        {errPar && <p>Error al cargar partes: {errPar.message}</p>}
       </main>
     );
   }
 
-  // Normaliza para la tabla
-  const filas = (data || []).map((r:any) => ({
-    id: r.id as string,
-    fecha: fmt(r.fecha) || '',
-    inicio: r.hora_inicio || '',
-    fin: r.hora_fin || '',
-    horas: typeof r.horas === 'number' ? r.horas : Number(r.horas || 0),
-    comentario: r.comentario || '',
-    expediente: r.expedientes ? `${r.expedientes.codigo || '—'} — ${r.expedientes.proyecto || '—'}` : '—',
-    tarea: r.tarea?.titulo ?? null
-  }));
+  const mapTareaTitulos: Record<string, string> = {};
+  (tareas || []).forEach((t: any) => {
+    if (t?.id) mapTareaTitulos[String(t.id)] = String(t.titulo ?? '');
+  });
 
   return (
-    <main>
+    <main style={{ padding: 16 }}>
       <h2>Partes</h2>
-      {/* 👇 Prop correcta */}
-      <PartesTabla partes={filas}/>
+      <PartesUI
+        expedientes={(expedientes || []) as any}
+        partesIniciales={(partes || []) as any}
+        mapTareaTitulos={mapTareaTitulos}
+      />
     </main>
   );
 }
