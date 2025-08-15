@@ -13,15 +13,18 @@ function ymd(d: Date) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
+
 function rangeUltimosDias(dias: number) {
   const hoy = new Date();
   const start = new Date(hoy);
   start.setDate(hoy.getDate() - dias + 1);
   return { start: ymd(start), end: ymd(hoy) };
 }
+
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
 }
+
 function num(n: any): number {
   const v = Number(n);
   return Number.isFinite(v) ? v : 0;
@@ -32,6 +35,8 @@ function sum(arr: number[]) {
 
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
+
+  // Rango: hoy y últimos 10 días
   const { start, end } = rangeUltimosDias(10);
   const hoy = ymd(new Date());
   const fechaLimite = end;
@@ -95,6 +100,7 @@ export default async function ResumenDiarioPage() {
   };
 
   const horasTotales = sum((partes || []).map((p) => num((p as any).horas)));
+
   const horasVisitas = sum(
     (partes || [])
       .filter((p) => esVisita(tareaTitulo((p as any).tarea)))
