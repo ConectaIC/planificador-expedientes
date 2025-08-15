@@ -8,44 +8,61 @@ import { normalizeOne } from '../../lib/relations';
 export default async function TareasPage() {
   const sb = supabaseAdmin();
 
-  // Tareas con su expediente asociado (la relación puede venir como array/objeto)
-  const { data: tareas, error: errT } = await sb
+  // Campos confirmados por ti:
+  // id, expediente_id, titulo, horas_previstas, horas_realizadas, estado, prioridad, vencimiento
+  // Relación para mostrar datos del expediente (codigo, proyecto, cliente)
+  const { data: tareas, error } = await sb
     .from('tareas')
     .select(`
-      id, titulo, descripcion, estado, tipo, prioridad, horas_previstas, vencimiento, fecha_cierre,
+      id,
+      expediente_id,
+      titulo,
+      horas_previstas,
+      horas_realizadas,
+      estado,
+      prioridad,
+      vencimiento,
       expedientes ( codigo, proyecto, cliente )
     `)
     .order('vencimiento', { ascending: true });
 
-  if (errT) {
+  if (error) {
     return (
-      <main style={{ padding: 16 }}>
-        <h2>Tareas</h2>
-        <p>Error al cargar tareas: {errT.message}</p>
+      <main>
+        <div className="card">
+          <h2>Tareas</h2>
+        </div>
+        <p className="error-state" style={{ marginTop: 12 }}>
+          Error al cargar tareas: {error.message}
+        </p>
       </main>
     );
   }
 
-  const main: React.CSSProperties = { padding: 16 };
-  const tbl: React.CSSProperties = { width: '100%', borderCollapse: 'collapse' };
   const th: React.CSSProperties = {
     textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
+    padding: '10px 8px',
+    borderBottom: '1px solid var(--cic-border)',
+    background: '#f1f6ff',
   };
   const td: React.CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-    verticalAlign: 'top',
+    padding: '10px 8px',
+    borderBottom: '1px solid var(--cic-border)',
   };
-  const link: React.CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
+  const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
+
+  const fmt2 = (n: any) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(2) : '—';
+  };
 
   return (
-    <main style={main}>
-      <h2>Tareas</h2>
+    <main>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h2>Tareas</h2>
+      </div>
 
-      <table style={tbl}>
+      <table>
         <thead>
           <tr>
             <th style={th}>Vencimiento</th>
@@ -54,9 +71,9 @@ export default async function TareasPage() {
             <th style={th}>Cliente</th>
             <th style={th}>Título</th>
             <th style={th}>Estado</th>
-            <th style={th}>Tipo</th>
             <th style={th}>Prioridad</th>
-            <th style={th}>Horas previstas</th>
+            <th style={th}>Horas prev.</th>
+            <th style={th}>Horas real.</th>
           </tr>
         </thead>
         <tbody>
@@ -78,11 +95,9 @@ export default async function TareasPage() {
                 <td style={td}>{exp?.cliente || '—'}</td>
                 <td style={td}>{t.titulo || '—'}</td>
                 <td style={td}>{t.estado || '—'}</td>
-                <td style={td}>{t.tipo || '—'}</td>
                 <td style={td}>{t.prioridad || '—'}</td>
-                <td style={td}>
-                  {typeof t.horas_previstas === 'number' ? t.horas_previstas.toFixed(2) : '—'}
-                </td>
+                <td style={td}>{fmt2(t.horas_previstas)}</td>
+                <td style={td}>{fmt2(t.horas_realizadas)}</td>
               </tr>
             );
           })}
