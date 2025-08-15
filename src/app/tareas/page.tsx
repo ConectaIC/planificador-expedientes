@@ -1,150 +1,122 @@
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
+// src/app/tareas/page.tsx
+// Tipo: Server Component
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
+import TareaRowActions from '../../components/TareaRowActions';
 
-type Props = {
-  searchParams?: {
-    q?: string;      // proyecto, expediente (código), cliente, título
-    estado?: string;
-    prioridad?: string;
-    orden?: string;  // "vencimiento:asc|desc" | "horas:asc|desc"
-  };
+type Tarea = {
+  id: number;
+  titulo: string;
+  expediente_id: number;
+  estado: string | null;
+  prioridad: string | null;
+  horas_previstas: number | null;
+  horas_realizadas: number | null;
+  vencimiento: string | null;
+  expedientes?: { codigo: string } | null;
 };
 
-export default async function TareasPage({ searchParams }: Props) {
+function fmt(n: any) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v.toFixed(2) : '—';
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const q = (k: string) => {
+    const v = searchParams?.[k];
+    return Array.isArray(v) ? v[0] : v || '';
+  };
+
+  const texto = q('q')?.trim() || '';
+  const estado = q('estado')?.trim() || '';
+  const prioridad = q('prioridad')?.trim() || '';
+  const ordenar = q('orden')?.trim() || 'vencimiento_asc';
+
   const sb = supabaseAdmin();
 
-  const q = (searchParams?.q || '').trim().toLowerCase();
-  const estado = (searchParams?.estado || '').trim();
-  const prioridad = (searchParams?.prioridad || '').trim();
-  const orden = (searchParams?.orden || 'vencimiento:asc').trim();
+  // datos para selector de expediente en el formulario de edición
+  const { data: expsMini } = await sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true });
 
-  const { data, error } = await sb
+  let query = sb
     .from('tareas')
-    .select(`
-      id,
-      expediente_id,
-      titulo,
-      horas_previstas,
-      horas_realizadas,
-      estado,
-      prioridad,
-      vencimiento,
-      expedientes ( codigo, proyecto, cliente )
-    `);
+    .select('id,titulo,expediente_id,estado,prioridad,horas_previstas,horas_realizadas,vencimiento,expedientes(codigo)');
 
+  if (texto) query = query.or(`titulo.ilike.%${texto}%,expedientes.codigo.ilike.%${texto}%`);
+  if (estado) query = query.eq('estado', estado);
+  if (prioridad) query = query.eq('prioridad', prioridad);
+
+  const [campo, dir] = (() => {
+    switch (ordenar) {
+      case 'vencimiento_desc':
+        return ['vencimiento', { ascending: false as const }];
+      case 'vencimiento_asc':
+      default:
+        return ['vencimiento', { ascending: true as const }];
+    }
+  })();
+
+  const { data, error } = await query.order(campo, dir);
   if (error) {
     return (
-      <main>
-        <div className="card"><h2>Tareas</h2></div>
-        <p className="error-state">Error al cargar tareas: {error.message}</p>
+      <main className="container">
+        <h1>Tareas</h1>
+        <div className="error">Error al cargar tareas: {error.message}</div>
       </main>
     );
   }
 
-  let tareas = (data || []).filter((t: any) => {
-    const exp = Array.isArray(t.expedientes) ? t.expedientes[0] : t.expedientes;
-    const hitQ =
-      !q ||
-      [t.titulo, exp?.proyecto, exp?.cliente, exp?.codigo]
-        .some((v) => String(v || '').toLowerCase().includes(q));
-    const hitEstado = !estado || String(t.estado || '') === estado;
-    const hitPrioridad = !prioridad || String(t.prioridad || '') === prioridad;
-    return hitQ && hitEstado && hitPrioridad;
-  });
-
-  const [campo, dir] = (orden.includes(':') ? orden : 'vencimiento:asc').split(':') as [
-    'vencimiento' | 'horas',
-    'asc' | 'desc'
-  ];
-  tareas = tareas.sort((a: any, b: any) => {
-    let va: any = '';
-    let vb: any = '';
-    switch (campo) {
-      case 'vencimiento':
-        va = a.vencimiento || '';
-        vb = b.vencimiento || '';
-        break;
-      case 'horas': {
-        const ha = Number(a.horas_realizadas ?? 0);
-        const hb = Number(b.horas_realizadas ?? 0);
-        va = Number.isFinite(ha) ? ha : 0;
-        vb = Number.isFinite(hb) ? hb : 0;
-        break;
-      }
-    }
-    const cmp =
-      typeof va === 'number' && typeof vb === 'number'
-        ? va - vb
-        : String(va).localeCompare(String(vb), 'es', { numeric: true });
-    return cmp * (dir === 'desc' ? -1 : 1);
-  });
-
-  const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
-  const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
-  const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
-  const fmt2 = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
+  const tareas = (data || []) as Tarea[];
 
   return (
-    <main>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginBottom: 8 }}>Tareas</h2>
-        <FiltrosTareasGlobal orderParamName="orden" />
+    <main className="container">
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <h1>Tareas</h1>
+        {/* Esta vista NO crea tareas. Alta desde el expediente */}
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th style={th}>Vencimiento</th>
-            <th style={th}>Expediente</th>
-            <th style={th}>Proyecto</th>
-            <th style={th}>Cliente</th>
-            <th style={th}>Título</th>
-            <th style={th}>Estado</th>
-            <th style={th}>Prioridad</th>
-            <th style={th}>Horas prev.</th>
-            <th style={th}>Horas real.</th>
-            <th style={th}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tareas.map((t: any) => {
-            const exp = Array.isArray(t.expedientes) ? t.expedientes[0] : t.expedientes;
-            return (
-              <tr key={t.id}>
-                <td style={td}>{t.vencimiento || '—'}</td>
-                <td style={td}>
-                  {exp?.codigo ? (
-                    <a href={`/expedientes/${encodeURIComponent(exp.codigo)}`} style={link}>
-                      {exp.codigo}
-                    </a>
-                  ) : '—'}
-                </td>
-                <td style={td}>{exp?.proyecto || '—'}</td>
-                <td style={td}>{exp?.cliente || '—'}</td>
-                <td style={td}><span>{t.titulo || '—'}</span></td>
-                <td style={td}>{t.estado || '—'}</td>
-                <td style={td}>{t.prioridad || '—'}</td>
-                <td style={td}>{fmt2(t.horas_previstas)}</td>
-                <td style={td}>{fmt2(t.horas_realizadas)}</td>
-                <td style={td}>
-                  <a href={`/tareas/${t.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
-                  <a href={`/tareas/${t.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
-                </td>
-              </tr>
-            );
-          })}
-          {!tareas.length && (
+      <FiltrosTareasGlobal />
+
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={10} style={{ ...td, textAlign: 'center', opacity: 0.7 }}>
-                No hay tareas con esos criterios.
-              </td>
+              <th>Título</th>
+              <th>Expediente</th>
+              <th>Estado</th>
+              <th>Prioridad</th>
+              <th>Vencimiento</th>
+              <th>Horas (real / prev.)</th>
+              <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tareas.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center' }}>No hay tareas que cumplan el filtro.</td>
+              </tr>
+            ) : (
+              tareas.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.titulo}</td>
+                  <td>{t.expedientes?.codigo || '—'}</td>
+                  <td>{t.estado || '—'}</td>
+                  <td>{t.prioridad || '—'}</td>
+                  <td>{t.vencimiento ? new Date(t.vencimiento).toLocaleDateString('es-ES') : '—'}</td>
+                  <td><strong>{fmt(t.horas_realizadas)}</strong> / {fmt(t.horas_previstas)}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <TareaRowActions tarea={t as any} expedientes={(expsMini || []) as any[]} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }
