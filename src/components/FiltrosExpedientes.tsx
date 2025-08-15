@@ -4,8 +4,7 @@ import React, { useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type Props = {
-  /** Nombre del parámetro de orden en la URL (por defecto "orden") */
-  orderParamName?: string;
+  orderParamName?: string; // por defecto "orden"
 };
 
 export default function FiltrosExepdientes({ orderParamName = 'orden' }: Props) {
@@ -24,7 +23,7 @@ export default function FiltrosExepdientes({ orderParamName = 'orden' }: Props) 
       if (val) params.set(k, val);
       else params.delete(k);
     }
-    params.delete('page');
+    params.delete('page'); // reset de paginación si la hubiera
 
     router.push(`?${params.toString()}`);
   }
