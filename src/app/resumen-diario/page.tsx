@@ -2,11 +2,23 @@
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
+import type { CSSProperties } from 'react';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
-import { ymd, rangeUltimosDias, isBetween } from '../../lib/dateUtils';
-import ErrorState from '../../components/ErrorState';
-import TableEmptyRow from '../../components/TableEmptyRow';
+
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function rangeUltimosDias(dias: number) {
+  const hoy = new Date();
+  const start = new Date(hoy);
+  start.setDate(hoy.getDate() - dias + 1);
+  return { start: ymd(start), end: ymd(hoy) };
+}
 
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
@@ -23,8 +35,10 @@ function sum(arr: number[]) {
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
 
+  // Rango: hoy y últimos 10 días
   const { start, end } = rangeUltimosDias(10);
   const hoy = ymd(new Date());
+  const fechaLimite = end;
 
   // Partes (para horas totales / visitas)
   const { data: partes, error: errPartes } = await sb
@@ -36,6 +50,15 @@ export default async function ResumenDiarioPage() {
     .gte('fecha', start)
     .lte('fecha', end);
 
+  if (errPartes) {
+    return (
+      <main>
+        <h2>Resumen diario</h2>
+        <p>Error al cargar partes: {errPartes.message}</p>
+      </main>
+    );
+  }
+
   // Tareas pendientes próximas (10 días)
   const { data: tareasPend, error: errTareas } = await sb
     .from('tareas')
@@ -45,57 +68,30 @@ export default async function ResumenDiarioPage() {
     `)
     .not('estado', 'ilike', 'completada%');
 
+  if (errTareas) {
+    return (
+      <main>
+        <h2>Resumen diario</h2>
+        <p>Error al cargar tareas: {errTareas.message}</p>
+      </main>
+    );
+  }
+
   // Expedientes con próximas entregas (10 días)
   const { data: expedientes, error: errExps } = await sb
     .from('expedientes')
     .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  // Estilos coherentes con globals.css
-  const mainStyle: React.CSSProperties = { padding: 16 };
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--cic-bg-card, #fff)',
-    border: '1px solid var(--cic-border, #e5e5e5)',
-    borderRadius: 8,
-    padding: 12,
-    flex: 1,
-  };
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 12,
-  };
-  const tblStyle: React.CSSProperties = {
-    width: '100%',
-    borderCollapse: 'collapse',
-    marginTop: 8,
-  };
-  const thStyle: React.CSSProperties = {
-    textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
-  };
-  const tdStyle: React.CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-  };
-  const linkStyle: React.CSSProperties = {
-    color: 'var(--cic-primary, #0b5fff)',
-    textDecoration: 'none',
-  };
-
-  // Manejo de errores (ahora con componente reutilizable)
-  if (errPartes || errTareas || errExps) {
+  if (errExps) {
     return (
-      <main style={mainStyle}>
+      <main>
         <h2>Resumen diario</h2>
-        {errPartes && <ErrorState mensaje={`Error al cargar partes: ${errPartes.message}`} />}
-        {errTareas && <ErrorState mensaje={`Error al cargar tareas: ${errTareas.message}`} />}
-        {errExps && <ErrorState mensaje={`Error al cargar expedientes: ${errExps.message}`} />}
+        <p>Error al cargar expedientes: {errExps.message}</p>
       </main>
     );
   }
 
+  // --- Métricas ---
   const esVisita = (s?: string | null) => {
     if (!s) return false;
     const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -110,12 +106,45 @@ export default async function ResumenDiarioPage() {
   );
 
   const proximasTareas = (tareasPend || [])
-    .filter((t) => isBetween(t.vencimiento, hoy, end))
+    .filter((t) => {
+      const v = (t.vencimiento || '').slice(0, 10);
+      return v && v >= hoy && v <= fechaLimite;
+    })
     .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
 
   const proximasEntregas = (expedientes || [])
-    .filter((e) => isBetween(e.fin, hoy, end))
+    .filter((e) => {
+      const f = (e.fin || '').slice(0, 10);
+      return f && f >= hoy && f <= fechaLimite;
+    })
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+
+  // Estilos simples (coherentes con globals.css)
+  const mainStyle: CSSProperties = { padding: 16 };
+  const cardStyle: CSSProperties = {
+    background: 'var(--cic-bg-card, #fff)',
+    border: '1px solid var(--cic-border, #e5e5e5)',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+  };
+  const gridStyle: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
+  };
+  const tblStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
+  const thStyle: CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
 
   return (
     <main style={mainStyle}>
@@ -136,9 +165,7 @@ export default async function ResumenDiarioPage() {
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Próximas entregas (10 días)</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {(proximasEntregas || []).length}
-          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{(proximasEntregas || []).length}</div>
         </div>
       </section>
 
@@ -155,7 +182,7 @@ export default async function ResumenDiarioPage() {
         </thead>
         <tbody>
           {proximasTareas.map((t) => {
-            const exp = normalizeOne((t as any).expedientes);
+            const exp = normalizeOne((t as any).expedientes); // <<— normaliza array/objeto
             return (
               <tr key={t.id}>
                 <td style={tdStyle}>{t.vencimiento || '—'}</td>
@@ -170,7 +197,11 @@ export default async function ResumenDiarioPage() {
               </tr>
             );
           })}
-          {!proximasTareas.length && <TableEmptyRow colSpan={5} mensaje="Sin tareas próximas" />}
+          {!proximasTareas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
+            </tr>
+          )}
         </tbody>
       </table>
 
@@ -199,7 +230,11 @@ export default async function ResumenDiarioPage() {
               <td style={tdStyle}>{e.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && <TableEmptyRow colSpan={5} mensaje="Sin entregas próximas" />}
+          {!proximasEntregas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
+            </tr>
+          )}
         </tbody>
       </table>
     </main>
