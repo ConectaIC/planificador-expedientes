@@ -259,3 +259,25 @@ input:focus, select:focus, textarea:focus{
   table{ box-shadow:none; border-color:#bbb }
   a{ color:#000; text-decoration:none }
 }
+
+/* ===========
+    Navegación 
+    ===========*/
+.navlink {
+  color: var(--cic-text, #1f2937);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.navlink:hover {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+.navlink.strong {
+  color: var(--cic-primary, #005bbb);
+  font-weight: 600;
+  border-color: #dbeafe;
+  background: #eff6ff;
+}
+
