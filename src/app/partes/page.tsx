@@ -13,7 +13,7 @@ export default async function PartesPage() {
     .select('id, codigo, proyecto')
     .order('codigo', { ascending: true });
 
-  // Tareas para construir el mapa id -> título (lo usa PartesUI al mostrar filas)
+  // Tareas (para mapear id -> título en la tabla inicial)
   const { data: tareas, error: errTar } = await sb
     .from('tareas')
     .select('id, titulo')
