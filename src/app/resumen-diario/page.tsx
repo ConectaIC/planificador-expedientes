@@ -20,9 +20,8 @@ function rangeUltimosDias(dias: number) {
 
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
-  const { start, end } = rangeUltimosDias(4); // últimos 3-4 días
+  const { start, end } = rangeUltimosDias(4);
 
-  // PARTES últimos días
   const { data: partes, error: errPartes } = await sb
     .from('partes')
     .select(`
@@ -37,9 +36,8 @@ export default async function ResumenDiarioPage() {
     return <main><h2>Resumen diario</h2><p>Error al cargar partes: {errPartes.message}</p></main>;
   }
 
-  // TAREAS pendientes y próximas
   const hoy = ymd(new Date());
-  const fechaLimite = ymd(new Date(new Date().setDate(new Date().getDate() + 10))); // próximas 2 semanas
+  const fechaLimite = ymd(new Date(new Date().setDate(new Date().getDate() + 10)));
 
   const { data: tareasPend, error: errT } = await sb
     .from('tareas')
@@ -53,7 +51,6 @@ export default async function ResumenDiarioPage() {
     return <main><h2>Resumen diario</h2><p>Error al cargar tareas: {errT.message}</p></main>;
   }
 
-  // EXPEDIENTES con entregas próximas
   const { data: exps, error: errExps } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, estado, prioridad')
@@ -64,14 +61,11 @@ export default async function ResumenDiarioPage() {
     return <main><h2>Resumen diario</h2><p>Error al cargar expedientes: {errExps.message}</p></main>;
   }
 
-  // ---- CÁLCULOS ----
   const num = (x: any) => (typeof x === 'number' ? x : Number(x || 0));
   const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
 
-  // Horas totales últimos días
   const horasTotales = sum((partes || []).map(p => num(p.horas)));
 
-  // Horas de visitas detectadas
   const esVisita = (s?: string | null) => {
     if (!s) return false;
     const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -81,7 +75,6 @@ export default async function ResumenDiarioPage() {
     .filter(p => esVisita(p.tarea?.titulo))
     .map(p => num(p.horas)));
 
-  // Próximas tareas
   const proximasTareas = (tareasPend || [])
     .filter(t => {
       const v = (t.vencimiento || '').slice(0, 10);
@@ -89,7 +82,6 @@ export default async function ResumenDiarioPage() {
     })
     .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
 
-  // Próximas entregas de expedientes
   const proximasEntregas = (exps || [])
     .filter(e => {
       const f = (e.fin || '').slice(0, 10);
@@ -97,61 +89,82 @@ export default async function ResumenDiarioPage() {
     })
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
 
+  const cardStyle: React.CSSProperties = { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 };
+  const gridStyle: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:12, margin:'12px 0' };
+  const tblStyle: React.CSSProperties = { width:'100%', borderCollapse:'separate', borderSpacing:'0 6px', marginTop:8 };
+  const thStyle: React.CSSProperties = { fontWeight:600, textAlign:'left', padding:'6px 10px' };
+  const tdStyle: React.CSSProperties = { background:'#fff', padding:'10px', borderTop:'1px solid #eef1f5', borderBottom:'1px solid #eef1f5' };
+  const linkStyle: React.CSSProperties = { color:'var(--cic-primary)' };
+
   return (
     <main>
       <h2>Resumen diario</h2>
       <p>Últimos días: <b>{start}</b> a <b>{end}</b></p>
 
-      <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12,margin:'12px 0'}}>
-        <div className="card"><div className="k">Horas totales</div><div className="v">{horasTotales.toFixed(2)}</div></div>
-        <div className="card"><div className="k">Visitas de obra (h)</div><div className="v">{horasVisitas.toFixed(2)}</div></div>
-        <div className="card"><div className="k">Próximas tareas</div><div className="v">{(proximasTareas||[]).length}</div></div>
-        <div className="card"><div className="k">Próximas entregas</div><div className="v">{(proximasEntregas||[]).length}</div></div>
+      <section style={gridStyle}>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas totales</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasTotales.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Visitas de obra (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasVisitas.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Próximas tareas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(proximasTareas||[]).length}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Próximas entregas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(proximasEntregas||[]).length}</div></div>
       </section>
 
       <h3 style={{marginTop:16}}>Próximas tareas (10 días)</h3>
-      <table className="tbl">
-        <thead><tr><th>Vencimiento</th><th>Título</th><th>Expediente</th><th>Cliente</th><th>Prioridad</th></tr></thead>
+      <table style={tblStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Vencimiento</th>
+            <th style={thStyle}>Título</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
         <tbody>
           {proximasTareas.map(t=>(
             <tr key={t.id}>
-              <td>{t.vencimiento || '—'}</td>
-              <td>{t.titulo}</td>
-              <td><a href={`/expedientes/${encodeURIComponent(t.expedientes?.codigo || '')}`}>{t.expedientes?.codigo || '—'}</a></td>
-              <td>{t.expedientes?.cliente || '—'}</td>
-              <td>{t.prioridad || '—'}</td>
+              <td style={tdStyle}>{t.vencimiento || '—'}</td>
+              <td style={tdStyle}>{t.titulo}</td>
+              <td style={tdStyle}>
+                <a href={`/expedientes/${encodeURIComponent(t.expedientes?.codigo || '')}`} style={linkStyle}>
+                  {t.expedientes?.codigo || '—'}
+                </a>
+              </td>
+              <td style={tdStyle}>{t.expedientes?.cliente || '—'}</td>
+              <td style={tdStyle}>{t.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasTareas.length && <tr><td colSpan={5} style={{textAlign:'center',opacity:.7}}>—</td></tr>}
+          {!proximasTareas.length && <tr><td colSpan={5} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
 
       <h3 style={{marginTop:16}}>Próximas entregas (10 días)</h3>
-      <table className="tbl">
-        <thead><tr><th>Fin</th><th>Código</th><th>Proyecto</th><th>Cliente</th><th>Prioridad</th></tr></thead>
+      <table style={tblStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Fin</th>
+            <th style={thStyle}>Código</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
         <tbody>
           {proximasEntregas.map(e=>(
             <tr key={e.id}>
-              <td>{e.fin || '—'}</td>
-              <td><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`}>{e.codigo || '—'}</a></td>
-              <td>{e.proyecto || '—'}</td>
-              <td>{e.cliente || '—'}</td>
-              <td>{e.prioridad || '—'}</td>
+              <td style={tdStyle}>{e.fin || '—'}</td>
+              <td style={tdStyle}>
+                <a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>
+                  {e.codigo || '—'}
+                </a>
+              </td>
+              <td style={tdStyle}>{e.proyecto || '—'}</td>
+              <td style={tdStyle}>{e.cliente || '—'}</td>
+              <td style={tdStyle}>{e.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && <tr><td colSpan={5} style={{textAlign:'center',opacity:.7}}>—</td></tr>}
+          {!proximasEntregas.length && <tr><td colSpan={5} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
-
-      <style jsx>{`
-        .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
-        .k{font-size:.9rem;color:#6b7280}
-        .v{font-size:1.4rem;font-weight:700}
-        .tbl{width:100%;border-collapse:separate;border-spacing:0 6px;margin-top:8px}
-        thead th{font-weight:600;text-align:left;padding:6px 10px}
-        tbody td{background:#fff;padding:10px;border-top:1px solid #eef1f5;border-bottom:1px solid #eef1f5}
-        a{color:var(--cic-primary)}
-      `}</style>
     </main>
   );
 }
