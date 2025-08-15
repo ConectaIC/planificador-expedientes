@@ -12,44 +12,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body>
-        {/* Barra de navegación fija */}
-        <header
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 50,
-            background: 'var(--cic-bg, #f7f7fb)',
-            borderBottom: '1px solid #e5e7eb',
-          }}
-        >
-          <nav
-            style={{
-              maxWidth: 1200,
-              margin: '0 auto',
-              padding: '10px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-            }}
-          >
-            {/* Logo + marca */}
+        <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'var(--cic-bg, #f7f7fb)', borderBottom: '1px solid #e5e7eb' }}>
+          <nav style={{ maxWidth: 1200, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
             <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-              <img
-                src="/logo_cic.png"
-                alt="Conecta Ingenieros"
-                width={36}
-                height={36}
-                style={{ borderRadius: 8, objectFit: 'contain' }}
-              />
-              <span style={{ fontWeight: 700, color: 'var(--cic-primary, #005bbb)' }}>
-                Conecta Ingenieros
-              </span>
+              <img src="/logo_cic.png" alt="Conecta Ingenieros" width={36} height={36} style={{ borderRadius: 8, objectFit: 'contain' }} />
+              <span style={{ fontWeight: 700, color: 'var(--cic-primary, #005bbb)' }}>Conecta Ingenieros</span>
             </Link>
-
-            {/* Separador flexible */}
             <div style={{ flex: 1 }} />
-
-            {/* Menú */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <Link className="navlink" href="/">Inicio</Link>
               <Link className="navlink" href="/expedientes">Expedientes</Link>
@@ -62,29 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </nav>
         </header>
 
-        {/* Contenido */}
-        <main style={{ maxWidth: 1200, margin: '16px auto', padding: '0 16px' }}>{children}</main>
-
-        {/* Estilos mínimos para los enlaces del menú */}
-        <style jsx global>{`
-          .navlink {
-            color: var(--cic-text, #1f2937);
-            text-decoration: none;
-            padding: 6px 10px;
-            border-radius: 8px;
-            border: 1px solid transparent;
-          }
-          .navlink:hover {
-            background: #ffffff;
-            border-color: #e5e7eb;
-          }
-          .navlink.strong {
-            color: var(--cic-primary, #005bbb);
-            font-weight: 600;
-            border-color: #dbeafe;
-            background: #eff6ff;
-          }
-        `}</style>
+        <main style={{ maxWidth: 1200, margin: '16px auto', padding: '0 16px' }}>
+          {children}
+        </main>
       </body>
     </html>
   );
