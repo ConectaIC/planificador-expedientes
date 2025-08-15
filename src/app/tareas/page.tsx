@@ -5,7 +5,9 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
 import TareaRowActions from '../../components/TareaRowActions';
 
-type Tarea = {
+type ExpedienteMini = { id: number; codigo: string; proyecto?: string | null };
+
+type TareaView = {
   id: number;
   titulo: string;
   expediente_id: number;
@@ -14,8 +16,14 @@ type Tarea = {
   horas_previstas: number | null;
   horas_realizadas: number | null;
   vencimiento: string | null;
-  expedientes?: { codigo: string } | null;
+  expedienteCodigo: string | null; // normalizado de la relación expedientes
 };
+
+// Normaliza una relación que puede venir como objeto, array u null → objeto o null
+function firstOrNull<T>(rel: T | T[] | null | undefined): T | null {
+  if (!rel) return null;
+  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
 
 function fmt(n: any) {
   const v = Number(n);
@@ -32,19 +40,23 @@ export default async function Page({
     return Array.isArray(v) ? v[0] : v || '';
   };
 
-  const texto = q('q')?.trim() || '';
-  const estado = q('estado')?.trim() || '';
-  const prioridad = q('prioridad')?.trim() || '';
-  const ordenar = q('orden')?.trim() || 'vencimiento_asc';
+  const texto = (q('q') || '').trim();
+  const estado = (q('estado') || '').trim();
+  const prioridad = (q('prioridad') || '').trim();
+  const ordenar = (q('orden') || 'vencimiento_asc').trim();
 
   const sb = supabaseAdmin();
 
   // datos para selector de expediente en el formulario de edición
-  const { data: expsMini } = await sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true });
+  const { data: expsMini } = await sb
+    .from('expedientes')
+    .select('id,codigo,proyecto')
+    .order('codigo', { ascending: true });
 
   let query = sb
     .from('tareas')
-    .select('id,titulo,expediente_id,estado,prioridad,horas_previstas,horas_realizadas,vencimiento,expedientes(codigo)');
+    // OJO: la relación "expedientes(...)" puede venir como array u objeto; lo normalizamos abajo
+    .select('id,titulo,expediente_id,estado,prioridad,horas_previstas,horas_realizadas,vencimiento,expedientes(id,codigo)');
 
   if (texto) query = query.or(`titulo.ilike.%${texto}%,expedientes.codigo.ilike.%${texto}%`);
   if (estado) query = query.eq('estado', estado);
@@ -70,7 +82,21 @@ export default async function Page({
     );
   }
 
-  const tareas = (data || []) as Tarea[];
+  // Normalización fuerte de relaciones para evitar errores de TS
+  const tareas: TareaView[] = (data || []).map((r: any) => {
+    const exp = firstOrNull<any>(r.expedientes);
+    return {
+      id: Number(r.id),
+      titulo: r.titulo ?? '',
+      expediente_id: Number(r.expediente_id),
+      estado: r.estado ?? null,
+      prioridad: r.prioridad ?? null,
+      horas_previstas: r.horas_previstas ?? null,
+      horas_realizadas: r.horas_realizadas ?? null,
+      vencimiento: r.vencimiento ?? null,
+      expedienteCodigo: exp?.codigo ?? null,
+    };
+  });
 
   return (
     <main className="container">
@@ -103,13 +129,25 @@ export default async function Page({
               tareas.map((t) => (
                 <tr key={t.id}>
                   <td>{t.titulo}</td>
-                  <td>{t.expedientes?.codigo || '—'}</td>
+                  <td>{t.expedienteCodigo || '—'}</td>
                   <td>{t.estado || '—'}</td>
                   <td>{t.prioridad || '—'}</td>
                   <td>{t.vencimiento ? new Date(t.vencimiento).toLocaleDateString('es-ES') : '—'}</td>
                   <td><strong>{fmt(t.horas_realizadas)}</strong> / {fmt(t.horas_previstas)}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <TareaRowActions tarea={t as any} expedientes={(expsMini || []) as any[]} />
+                    <TareaRowActions
+                      tarea={{
+                        id: t.id,
+                        titulo: t.titulo,
+                        expediente_id: t.expediente_id,
+                        estado: t.estado,
+                        prioridad: t.prioridad,
+                        horas_previstas: t.horas_previstas,
+                        horas_realizadas: t.horas_realizadas,
+                        vencimiento: t.vencimiento,
+                      } as any}
+                      expedientes={(expsMini || []) as ExpedienteMini[]}
+                    />
                   </td>
                 </tr>
               ))
