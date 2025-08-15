@@ -1,4 +1,6 @@
 // src/components/NewParteModal.tsx
+// Tipo: Client Component (solo cambia el texto del botón a emoji)
+
 'use client';
 
 import React from 'react';
@@ -18,7 +20,7 @@ export default function NewParteModal({ expedientes, tareas, onCreated }: Props)
   const [open, setOpen] = React.useState(false);
 
   const btn: React.CSSProperties = {
-    padding: '8px 12px',
+    padding: '6px 10px',
     borderRadius: 8,
     border: '1px solid var(--cic-border, #dcdcdc)',
     background: 'var(--cic-primary-bg, #eef4ff)',
@@ -27,7 +29,7 @@ export default function NewParteModal({ expedientes, tareas, onCreated }: Props)
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} style={btn}>+ Nuevo parte</button>
+      <button type="button" onClick={() => setOpen(true)} style={btn} title="Nuevo parte" aria-label="Nuevo parte">➕ Parte</button>
       <Modal open={open} onClose={() => setOpen(false)} title="Nuevo parte">
         <ParteForm expedientes={expedientes} tareas={tareas} onCreated={() => { setOpen(false); onCreated?.(); }} />
       </Modal>
