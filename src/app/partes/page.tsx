@@ -5,16 +5,25 @@ import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import NewParteModal from '../../components/NewParteModal';
 import PartesTabla from '../../components/PartesTabla';
 
-type Parte = {
+type ExpedienteMini = { id: number; codigo: string; proyecto?: string | null };
+type TareaMini = { id: number; titulo: string; expediente_id: number };
+
+type ParteRow = {
   id: number;
   fecha: string | null;
   inicio: string | null;
   fin: string | null;
   horas: number | null;
   comentario: string | null;
-  expedientes: { id: number; codigo: string } | null;
-  tareas: { id: number; titulo: string } | null;
+  expediente: { id: number; codigo: string } | null;
+  tarea: { id: number; titulo: string } | null;
 };
+
+// Normaliza una relación que puede venir como objeto, array u null → objeto o null
+function firstOrNull<T>(rel: T | T[] | null | undefined): T | null {
+  if (!rel) return null;
+  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
 
 export default async function Page({
   searchParams,
@@ -25,7 +34,7 @@ export default async function Page({
     const v = searchParams?.[k];
     return Array.isArray(v) ? v[0] : v || '';
   };
-  const ordenar = q('orden')?.trim() || 'fecha_desc';
+  const ordenar = (q('orden') || 'fecha_desc').trim();
 
   const sb = supabaseAdmin();
 
@@ -37,6 +46,7 @@ export default async function Page({
 
   let query = sb
     .from('partes')
+    // OJO: relaciones pueden venir como array u objeto; se normalizan abajo
     .select('id,fecha,inicio,fin,horas,comentario,expedientes(id,codigo),tareas(id,titulo)');
 
   const [campo, dir] = (() => {
@@ -59,28 +69,30 @@ export default async function Page({
     );
   }
 
-  const partes = (data || []) as Parte[];
-
-  // Adaptamos a interfaz de PartesTabla
-  const filas = partes.map((p) => ({
-    id: p.id,
-    fecha: p.fecha || null,
-    inicio: p.inicio || null,
-    fin: p.fin || null,
-    horas: p.horas ?? null,
-    comentario: p.comentario || null,
-    expediente: p.expedientes ? { id: p.expedientes.id, codigo: p.expedientes.codigo } : null,
-    tarea: p.tareas ? { id: p.tareas.id, titulo: p.tareas.titulo } : null,
-  }));
+  // Normalización de relaciones
+  const partes: ParteRow[] = (data || []).map((p: any) => {
+    const exp = firstOrNull<any>(p.expedientes);
+    const tarea = firstOrNull<any>(p.tareas);
+    return {
+      id: Number(p.id),
+      fecha: p.fecha ?? null,
+      inicio: p.inicio ?? null,
+      fin: p.fin ?? null,
+      horas: p.horas ?? null,
+      comentario: p.comentario ?? null,
+      expediente: exp ? { id: Number(exp.id), codigo: String(exp.codigo) } : null,
+      tarea: tarea ? { id: Number(tarea.id), titulo: String(tarea.titulo) } : null,
+    };
+  });
 
   return (
     <main className="container">
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <h1>Partes</h1>
-        <NewParteModal expedientes={(exps || []) as any} tareas={(ts || []) as any} />
+        <NewParteModal expedientes={(exps || []) as ExpedienteMini[]} tareas={(ts || []) as TareaMini[]} />
       </div>
 
-      <PartesTabla partes={filas as any} />
+      <PartesTabla partes={partes as any} />
     </main>
   );
 }
