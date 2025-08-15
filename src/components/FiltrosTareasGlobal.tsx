@@ -1,105 +1,64 @@
 'use client';
-import { useMemo, useState } from 'react';
 
-type TareaGlobal = {
-  id: string;
-  titulo: string;
-  estado?: string | null;
-  prioridad?: string | null;
-  horas_previstas?: number | null;
-  horas_realizadas?: number | null;
-  vencimiento?: string | null;
-  expedientes?: { codigo?: string | null; proyecto?: string | null } | null;
+import React, { useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+type Props = {
+  orderParamName?: string; // por defecto "orden"
 };
 
-function fmt(d?: string|null){ return d ? d.split('T')[0].split('-').reverse().join('/') : '—'; }
+export default function FiltrosTareasGlobal({ orderParamName = 'orden' }: Props) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-export default function FiltrosTareasGlobal({ tareas }: { tareas: TareaGlobal[] }) {
-  const [q, setQ] = useState('');
-  const [est, setEst] = useState<'todos'|'Pendiente'|'En curso'|'Entregado'|'En Supervisión'|'Cerrado'>('todos');
-  const [pri, setPri] = useState<'todas'|'Alta'|'Media'|'Baja'>('todas');
-  const [orden, setOrden] = useState<'vtoAsc'|'vtoDesc'|'priAsc'|'priDesc'>('vtoAsc');
+  function onChange() {
+    const form = formRef.current;
+    if (!form) return;
+    const fd = new FormData(form);
+    const params = new URLSearchParams(searchParams?.toString() || '');
 
-  const lista = useMemo(()=>{
-    let out = (tareas||[]).slice();
-    const qq = q.trim().toLowerCase();
-    if (qq) {
-      out = out.filter(t =>
-        (t.titulo||'').toLowerCase().includes(qq) ||
-        (t.expedientes?.codigo||'').toLowerCase().includes(qq) ||
-        (t.expedientes?.proyecto||'').toLowerCase().includes(qq)
-      );
+    for (const [k, v] of fd.entries()) {
+      const val = typeof v === 'string' ? v.trim() : '';
+      if (val) params.set(k, val);
+      else params.delete(k);
     }
-    if (est!=='todos') out = out.filter(t => (t.estado||'').toLowerCase()===est.toLowerCase());
-    if (pri!=='todas') out = out.filter(t => (t.prioridad||'').toLowerCase()===pri.toLowerCase());
+    params.delete('page');
 
-    switch(orden){
-      case 'vtoAsc':  out.sort((a,b)=> (a.vencimiento||'9999').localeCompare(b.vencimiento||'9999')); break;
-      case 'vtoDesc': out.sort((a,b)=> (b.vencimiento||'0000').localeCompare(a.vencimiento||'0000')); break;
-      case 'priAsc':  out.sort((a,b)=> (a.prioridad||'zzz').localeCompare(b.prioridad||'zzz')); break;
-      case 'priDesc': out.sort((a,b)=> (b.prioridad||'').localeCompare(a.prioridad||'')); break;
-    }
-    return out;
-  },[tareas,q,est,pri,orden]);
+    router.push(`?${params.toString()}`);
+  }
 
   return (
-    <>
-      <div style={{display:'grid', gridTemplateColumns:'1fr 180px 180px 180px', gap:8, alignItems:'center'}}>
-        <input placeholder="Buscar por título, expediente o proyecto" value={q} onChange={e=>setQ(e.target.value)} />
-        <select value={est} onChange={e=>setEst(e.target.value as any)}>
-          <option value="todos">Estado: todos</option>
-          <option value="Pendiente">Pendiente</option>
-          <option value="En curso">En curso</option>
-          <option value="Entregado">Entregado</option>
-          <option value="En Supervisión">En Supervisión</option>
-          <option value="Cerrado">Cerrado</option>
-        </select>
-        <select value={pri} onChange={e=>setPri(e.target.value as any)}>
-          <option value="todas">Prioridad: todas</option>
-          <option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option>
-        </select>
-        <select value={orden} onChange={e=>setOrden(e.target.value as any)}>
-          <option value="vtoAsc">Orden: Vto ↑</option>
-          <option value="vtoDesc">Orden: Vto ↓</option>
-          <option value="priAsc">Orden: Prioridad ↑</option>
-          <option value="priDesc">Orden: Prioridad ↓</option>
-        </select>
-      </div>
+    <form ref={formRef} className="filters" onChange={onChange}>
+      <input
+        name="q"
+        placeholder="Buscar por proyecto, expediente, cliente o título"
+        defaultValue={searchParams?.get('q') || ''}
+      />
 
-      <p style={{marginTop:6}}>Coincidencias: {lista.length} / {tareas.length}</p>
+      <select name="estado" defaultValue={searchParams?.get('estado') || ''}>
+        <option value="">Estado: todos</option>
+        <option value="Pendiente">Pendiente</option>
+        <option value="En curso">En curso</option>
+        <option value="Completada">Completada</option>
+      </select>
 
-      <section style={{overflowX:'auto'}}>
-        <table>
-          <thead>
-            <tr>
-              <th>Exp.</th>
-              <th>Proyecto</th>
-              <th>Título</th>
-              <th>Estado</th>
-              <th>Prioridad</th>
-              <th>Vencimiento</th>
-              <th>Previstas (h)</th>
-              <th>Realizadas (h)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.length ? lista.map((t)=>(
-              <tr key={t.id}>
-                <td><a href={`/expedientes/${encodeURIComponent(t.expedientes?.codigo||'')}`}>{t.expedientes?.codigo || '—'}</a></td>
-                <td>{t.expedientes?.proyecto || '—'}</td>
-                <td>{t.titulo}</td>
-                <td>{t.estado || '—'}</td>
-                <td>{t.prioridad || '—'}</td>
-                <td>{fmt(t.vencimiento)}</td>
-                <td>{t.horas_previstas ?? '—'}</td>
-                <td>{typeof t.horas_realizadas === 'number' ? t.horas_realizadas.toFixed(2) : (t.horas_realizadas ?? 0)}</td>
-              </tr>
-            )) : (
-              <tr><td colSpan={8}>Sin tareas.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-    </>
+      <select name="prioridad" defaultValue={searchParams?.get('prioridad') || ''}>
+        <option value="">Prioridad: todas</option>
+        <option value="Baja">Baja</option>
+        <option value="Media">Media</option>
+        <option value="Alta">Alta</option>
+      </select>
+
+      <select
+        name={orderParamName}
+        defaultValue={searchParams?.get(orderParamName) || 'vencimiento:asc'}
+      >
+        <option value="vencimiento:asc">Orden: Vencimiento ↑</option>
+        <option value="vencimiento:desc">Orden: Vencimiento ↓</option>
+        <option value="horas:asc">Orden: Horas realizadas ↑</option>
+        <option value="horas:desc">Orden: Horas realizadas ↓</option>
+      </select>
+    </form>
   );
 }
