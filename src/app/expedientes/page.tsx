@@ -1,16 +1,15 @@
-// src/app/expedientes/page.tsx
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import FiltrosExepdientes from '../../components/FiltrosExepdientes';
 
 type Props = {
   searchParams?: {
     q?: string;
     estado?: string;
     prioridad?: string;
-    ordenar?: 'codigo' | 'inicio' | 'fin';
-    dir?: 'asc' | 'desc';
+    orden?: string; // "fin:asc|fin:desc|codigo:asc|codigo:desc|horas:asc|horas:desc"
   };
 };
 
@@ -20,26 +19,25 @@ export default async function ExpedientesPage({ searchParams }: Props) {
   const q = (searchParams?.q || '').trim().toLowerCase();
   const estado = (searchParams?.estado || '').trim();
   const prioridad = (searchParams?.prioridad || '').trim();
-  const ordenar = (searchParams?.ordenar as any) || 'codigo';
-  const dir = (searchParams?.dir as any) || 'asc';
+  const orden = (searchParams?.orden || 'fin:asc').trim();
 
-  // Campos confirmados: id, codigo, proyecto, cliente, inicio, fin, prioridad, estado
   const { data, error } = await sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, inicio, fin, prioridad, estado');
+    .select('id, codigo, proyecto, cliente, inicio, fin, prioridad, estado, horas_previstas, horas_reales');
 
   if (error) {
     return (
       <main>
-        <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2>Expedientes</h2>
+          <a href="/expedientes/nuevo" className="btn-link">+ Nuevo expediente</a>
         </div>
-        <p className="error-state" style={{ marginTop: 12 }}>Error al cargar expedientes: {error.message}</p>
+        <p className="error-state">Error al cargar expedientes: {error.message}</p>
       </main>
     );
   }
 
-  // Filtros y búsqueda (server-side JS sobre el resultado para evitar complejidad de OR sobre relaciones)
+  // Filtro + búsqueda
   let expedientes = (data || []).filter((e) => {
     const hitQ =
       !q ||
@@ -51,58 +49,45 @@ export default async function ExpedientesPage({ searchParams }: Props) {
     return hitQ && hitEstado && hitPrioridad;
   });
 
-  // Ordenación
+  // Orden (campo:dir)
+  const [campo, dir] = (orden.includes(':') ? orden : 'fin:asc').split(':') as [
+    'codigo' | 'inicio' | 'fin' | 'horas',
+    'asc' | 'desc'
+  ];
   expedientes = expedientes.sort((a: any, b: any) => {
-    const va = (a as any)[ordenar] || '';
-    const vb = (b as any)[ordenar] || '';
-    return String(va).localeCompare(String(vb), 'es', { numeric: true }) * (dir === 'desc' ? -1 : 1);
+    let va: any = '';
+    let vb: any = '';
+    switch (campo) {
+      case 'codigo': va = a.codigo || ''; vb = b.codigo || ''; break;
+      case 'inicio': va = a.inicio || ''; vb = b.inicio || ''; break;
+      case 'fin':    va = a.fin || '';    vb = b.fin || '';    break;
+      case 'horas': {
+        const ha = Number(a.horas_reales ?? a.horas_previstas ?? 0);
+        const hb = Number(b.horas_reales ?? b.horas_previstas ?? 0);
+        va = Number.isFinite(ha) ? ha : 0;
+        vb = Number.isFinite(hb) ? hb : 0;
+        break;
+      }
+    }
+    const cmp = typeof va === 'number' && typeof vb === 'number'
+      ? (va - vb)
+      : String(va).localeCompare(String(vb), 'es', { numeric: true });
+    return cmp * (dir === 'desc' ? -1 : 1);
   });
 
-  const th: React.CSSProperties = {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--cic-border)',
-    background: '#f1f6ff',
-  };
-  const td: React.CSSProperties = {
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--cic-border)',
-  };
+  const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
+  const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
   const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
-  const controls: React.CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' };
+  const fmt2 = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
 
   return (
     <main>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginBottom: 10 }}>Expedientes</h2>
-        {/* Controles: GET para mantener SSR y URLs compartibles */}
-        <form method="get" style={controls}>
-          <input name="q" placeholder="Buscar por código, proyecto o cliente" defaultValue={q} />
-          <select name="estado" defaultValue={estado}>
-            <option value="">Estado (todos)</option>
-            <option>Pendiente</option>
-            <option>En curso</option>
-            <option>En supervisión</option>
-            <option>Entregado</option>
-            <option>Cerrado</option>
-          </select>
-          <select name="prioridad" defaultValue={prioridad}>
-            <option value="">Prioridad (todas)</option>
-            <option>Baja</option>
-            <option>Media</option>
-            <option>Alta</option>
-          </select>
-          <select name="ordenar" defaultValue={ordenar}>
-            <option value="codigo">Ordenar por código</option>
-            <option value="inicio">Ordenar por inicio</option>
-            <option value="fin">Ordenar por fin</option>
-          </select>
-          <select name="dir" defaultValue={dir}>
-            <option value="asc">Ascendente</option>
-            <option value="desc">Descendente</option>
-          </select>
-          <button type="submit">Aplicar</button>
-        </form>
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <h2 style={{ marginBottom: 8 }}>Expedientes</h2>
+          <FiltrosExepdientes orderParamName="orden" />
+        </div>
+        <a href="/expedientes/nuevo" className="btn-link">+ Nuevo expediente</a>
       </div>
 
       <table>
@@ -115,6 +100,8 @@ export default async function ExpedientesPage({ searchParams }: Props) {
             <th style={th}>Prioridad</th>
             <th style={th}>Inicio</th>
             <th style={th}>Fin</th>
+            <th style={th}>Horas</th>
+            <th style={th}>Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -122,12 +109,8 @@ export default async function ExpedientesPage({ searchParams }: Props) {
             <tr key={e.id}>
               <td style={td}>
                 {e.codigo ? (
-                  <a href={`/expedientes/${encodeURIComponent(e.codigo)}`} style={link}>
-                    {e.codigo}
-                  </a>
-                ) : (
-                  '—'
-                )}
+                  <a href={`/expedientes/${encodeURIComponent(e.codigo)}`} style={link}>{e.codigo}</a>
+                ) : '—'}
               </td>
               <td style={td}>{e.proyecto || '—'}</td>
               <td style={td}>{e.cliente || '—'}</td>
@@ -135,13 +118,17 @@ export default async function ExpedientesPage({ searchParams }: Props) {
               <td style={td}>{e.prioridad || '—'}</td>
               <td style={td}>{e.inicio || '—'}</td>
               <td style={td}>{e.fin || '—'}</td>
+              <td style={td}>{fmt2(e.horas_reales ?? e.horas_previstas)}</td>
+              <td style={td}>
+                {/* Próxima iteración: modales */}
+                <a href={`/expedientes/${encodeURIComponent(e.codigo)}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
+                <a href={`/expedientes/${encodeURIComponent(e.codigo)}?delete=1`} title="Borrar" style={link}>🗑️</a>
+              </td>
             </tr>
           ))}
           {!expedientes.length && (
             <tr>
-              <td colSpan={7} style={{ ...td, textAlign: 'center', opacity: 0.7 }}>
-                No hay expedientes con esos criterios.
-              </td>
+              <td colSpan={9} style={{ ...td, textAlign: 'center', opacity: .7 }}>No hay expedientes con esos criterios.</td>
             </tr>
           )}
         </tbody>
