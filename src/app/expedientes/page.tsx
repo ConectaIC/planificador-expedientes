@@ -4,66 +4,58 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
-// Componentes existentes
-import TareasDeExpedienteModal from '../../components/TareasDeExpedienteModal';
-import NuevoExpediente from '../../components/NuevoExpediente';
-
 export default async function ExpedientesPage() {
   const sb = supabaseAdmin();
 
-  // Expedientes (listado principal)
-  const { data: expedientes, error: errE } = await sb
+  // Campos confirmados por ti: id, codigo, proyecto, cliente, inicio, fin, prioridad, estado
+  // (De momento no mostramos horas_previstas / horas_reales para evitar dudas de nombre exacto.
+  //  Si el nombre en DB es horas_reales y horas_previstas, los añadimos en la siguiente iteración.)
+  const { data: expedientes, error } = await sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, fecha_inicio, fin, prioridad')
+    .select('id, codigo, proyecto, cliente, inicio, fin, prioridad, estado')
     .order('codigo', { ascending: true });
 
-  // Tareas (para el modal Tareas… filtraremos por expediente_id dentro del propio modal)
-  const { data: tareas, error: errT } = await sb
-    .from('tareas')
-    .select('id, titulo, expediente_id, vencimiento, estado, tipo, horas_previstas')
-    .order('titulo', { ascending: true });
-
-  if (errE || errT) {
+  if (error) {
     return (
-      <main style={{ padding: 16 }}>
-        <h2>Expedientes</h2>
-        {errE && <p>Error al cargar expedientes: {errE.message}</p>}
-        {errT && <p>Error al cargar tareas: {errT.message}</p>}
+      <main>
+        <div className="card">
+          <h2>Expedientes</h2>
+        </div>
+        <p className="error-state" style={{ marginTop: 12 }}>
+          Error al cargar expedientes: {error.message}
+        </p>
       </main>
     );
   }
 
-  // Estilos básicos
-  const main: React.CSSProperties = { padding: 16 };
-  const header: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
-  };
-  const tbl: React.CSSProperties = { width: '100%', borderCollapse: 'collapse' };
   const th: React.CSSProperties = {
-    textAlign: 'left', borderBottom: '1px solid var(--cic-border, #e5e5e5)', padding: '8px 6px', fontWeight: 600,
+    textAlign: 'left',
+    padding: '10px 8px',
+    borderBottom: '1px solid var(--cic-border)',
+    background: '#f1f6ff',
   };
-  const td: React.CSSProperties = { borderBottom: '1px solid var(--cic-border, #f0f0f0)', padding: '8px 6px' };
-  const actionsCell: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-  const btnRow: React.CSSProperties = { display: 'inline-flex', gap: 6, alignItems: 'center' };
+  const td: React.CSSProperties = {
+    padding: '10px 8px',
+    borderBottom: '1px solid var(--cic-border)',
+  };
 
   return (
-    <main style={main}>
-      <div style={header}>
+    <main>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <h2>Expedientes</h2>
-        {/* Alta en modal — componente existente */}
-        <NuevoExpediente />
+        {/* En esta versión mantenemos solo el listado. Añadiremos modales de alta/edición después. */}
       </div>
 
-      <table style={tbl}>
+      <table>
         <thead>
           <tr>
             <th style={th}>Código</th>
             <th style={th}>Proyecto</th>
             <th style={th}>Cliente</th>
+            <th style={th}>Estado</th>
             <th style={th}>Prioridad</th>
             <th style={th}>Inicio</th>
             <th style={th}>Fin</th>
-            <th style={th} />
           </tr>
         </thead>
         <tbody>
@@ -72,24 +64,12 @@ export default async function ExpedientesPage() {
               <td style={td}>{e.codigo || '—'}</td>
               <td style={td}>{e.proyecto || '—'}</td>
               <td style={td}>{e.cliente || '—'}</td>
+              <td style={td}>{e.estado || '—'}</td>
               <td style={td}>{e.prioridad || '—'}</td>
-              <td style={td}>{e.fecha_inicio || '—'}</td>
+              <td style={td}>{e.inicio || '—'}</td>
               <td style={td}>{e.fin || '—'}</td>
-              <td style={actionsCell}>
-                <span style={btnRow}>
-                  {/* Modal de tareas vinculadas — componente existente */}
-                  <TareasDeExpedienteModal
-                    expediente={e as any}
-                    expedientes={(expedientes || []) as any}
-                    tareas={(tareas || []) as any}
-                    onChanged={async () => { /* SSR: refresco por navegación cuando sea necesario */ }}
-                  />
-                  {/* TODO: Añadir botón de edición (wrapper cliente) en siguiente iteración */}
-                </span>
-              </td>
             </tr>
           ))}
-
           {!expedientes?.length && (
             <tr>
               <td colSpan={7} style={{ ...td, textAlign: 'center', opacity: 0.7 }}>
