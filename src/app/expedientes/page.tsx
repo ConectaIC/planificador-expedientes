@@ -4,11 +4,10 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
-// Reutilizamos componentes YA existentes en tu ZIP v2
-// (no se crean archivos nuevos en esta iteración)
+// Componentes EXISTENTES en v3:
 import TareasDeExpedienteModal from '../../components/TareasDeExpedienteModal';
 import NuevoExpediente from '../../components/NuevoExpediente';
-import EditarExpediente from '../../components/EditarExpediente';
+import ExpedienteEditModal from '../../components/ExpedienteEditModal';
 
 export default async function ExpedientesPage() {
   const sb = supabaseAdmin();
@@ -46,14 +45,13 @@ export default async function ExpedientesPage() {
   };
   const td: React.CSSProperties = { borderBottom: '1px solid var(--cic-border, #f0f0f0)', padding: '8px 6px' };
   const actionsCell: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-
   const btnRow: React.CSSProperties = { display: 'inline-flex', gap: 6, alignItems: 'center' };
 
   return (
     <main style={main}>
       <div style={header}>
         <h2>Expedientes</h2>
-        {/* Botón de alta en modal — componente existente */}
+        {/* Alta en modal — componente existente */}
         <NuevoExpediente />
       </div>
 
@@ -87,8 +85,8 @@ export default async function ExpedientesPage() {
                     tareas={(tareas || []) as any}
                     onChanged={async () => { /* SSR: refresco por navegación cuando sea necesario */ }}
                   />
-                  {/* Modal de edición — componente existente */}
-                  <EditarExpediente expediente={e as any} />
+                  {/* Modal de edición — componente existente (nombre correcto v3) */}
+                  <ExpedienteEditModal expediente={e as any} />
                 </span>
               </td>
             </tr>
