@@ -1,283 +1,166 @@
 /* src/app/globals.css */
 
 /* =========================
-   Variables de marca (CIC)
+   Reset básico y tipografía
    ========================= */
-:root{
-  /* Paleta derivada del logo */
-  --brand-900: #0b5a33;  /* verde oscuro CIC */
-  --brand-700: #147a45;
-  --brand-500: #1fa95c;  /* acento */
-  --brand-300: #51c784;
-  --brand-100: #dff5e8;
-
-  --leaf-1: #10a36a;     /* degradados hoja */
-  --leaf-2: #1bb47c;
-  --leaf-3: #2ec28a;
-
-  /* Base UI */
-  --bg: #ffffff;
-  --paper: #fcfcfd;
-  --text: #1c1d1f;
-  --muted: #6b7280;
-  --line: #e6e8ec;
-
-  /* Estados */
-  --ok: #16a34a;
-  --warn: #f59e0b;
-  --danger: #dc2626;
-  --info: #0284c7;
-
-  /* Sombra y radios */
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
-  --shadow-md: 0 6px 18px rgba(16,24,40,.08);
-  --radius: 14px;
-
-  /* Tipos */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-              Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans",
-              "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/* Modo oscuro automático */
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg: #0b0f0e;
-    --paper: #101514;
-    --text: #e6e7e8;
-    --muted: #a3a9b3;
-    --line: #22312c;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
-    --shadow-md: 0 8px 24px rgba(0,0,0,.35);
-  }
+html,
+body {
+  height: 100%;
 }
 
-/* ==============
-   Reset elegante
-   ============== */
-*{ box-sizing:border-box }
-html,body{ height:100% }
-html{ scroll-behavior:smooth }
-body{
-  margin:0;
-  font-family: var(--font-sans);
-  background: radial-gradient(1200px 800px at 80% -10%, rgba(31,169,92,.06), transparent 50%) , var(--bg);
-  color: var(--text);
-  line-height:1.45;
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--cic-bg, #fafafa);
+  color: var(--cic-text, #222);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* =========
-   Layout
-   ========= */
-main{
-  max-width: 1120px;
-  margin: 96px auto 64px; /* deja espacio para la topbar fija */
-  padding: 0 20px;
-}
-
-.container{ max-width:1120px; margin:0 auto; padding:0 20px }
-
-/* =========
-   Topbar
-   ========= */
-.topbar{
-  position: fixed; top:0; left:0; right:0;
-  height:72px; z-index:50;
-  display:flex; align-items:center;
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom:1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-}
-.topbar .container{ display:flex; align-items:center; gap:20px }
-.topbar .brand{
-  display:flex; align-items:center; gap:12px;
-  font-weight:700; letter-spacing:.2px;
-  color: var(--brand-900);
-}
-.topbar .brand img{
-  width:42px; height:42px; object-fit:contain; border-radius:8px;
-  /* coloca tu logo en /public/logo_cic.png */
-}
-.nav{
-  display:flex; gap:10px; margin-left:auto;
-}
-.nav a{
-  text-decoration:none; color: var(--text);
-  padding:10px 14px; border-radius:10px;
-}
-.nav a[aria-current="page"], .nav a:hover{
-  background: var(--brand-100); color: var(--brand-900);
-}
-
-/* =========
-   Títulos
-   ========= */
-h1,h2,h3{ margin:0 0 .4rem }
-h1{ font-size: clamp(28px, 3vw, 40px); letter-spacing:.2px }
-h2{ font-size: clamp(22px, 2.2vw, 28px); color: var(--brand-900) }
-h3{ font-size: clamp(18px, 1.8vw, 22px); color: var(--brand-700) }
-p.lead{ color:var(--muted); margin:.25rem 0 1.25rem }
-
-/* =========
-   Tarjetas
-   ========= */
-.card{
-  background: var(--paper);
-  border:1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  padding: 16px 18px;
-}
-
-/* =========
-   Tablas
-   ========= */
-table{
-  width:100%; border-collapse:separate; border-spacing:0;
-  background:var(--paper); border:1px solid var(--line);
-  border-radius: var(--radius); overflow:hidden;
-  box-shadow: var(--shadow-sm); margin:10px 0 22px;
-}
-thead th{
-  text-align:left; font-weight:700; font-size:14px;
-  background: linear-gradient(180deg, var(--brand-100), transparent 85%);
-  color: var(--brand-900); padding:12px 14px; border-bottom:1px solid var(--line);
-}
-tbody td{
-  padding:12px 14px; border-top:1px solid var(--line);
-}
-tbody tr:hover{ background: color-mix(in srgb, var(--brand-100) 45%, transparent) }
-
-/* =========
-   Formularios
-   ========= */
-input, select, textarea{
-  width:100%; padding:10px 12px; font:inherit; color:var(--text);
-  background: var(--paper); border:1px solid var(--line); border-radius:12px;
-  outline:none; transition: box-shadow .15s ease, border-color .15s ease;
-}
-textarea{ min-height:110px; resize:vertical }
-input:focus, select:focus, textarea:focus{
-  border-color: var(--brand-300);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-300) 35%, transparent);
-}
-
-/* =========
-   Botones
-   ========= */
-.btn{
-  display:inline-flex; align-items:center; gap:10px;
-  padding:10px 16px; border-radius:12px; border:1px solid transparent;
-  background: var(--brand-700); color:#fff; font-weight:700; cursor:pointer;
-  box-shadow: var(--shadow-sm); transition: transform .06s ease, filter .15s ease;
-}
-.btn:hover{ filter:brightness(1.05) }
-.btn:active{ transform: translateY(1px) }
-.btn-secondary{
-  background: #fff; color: var(--brand-900); border:1px solid var(--brand-300);
-}
-.btn-ghost{
-  background: transparent; color: var(--brand-900); border:1px dashed var(--brand-300);
-}
-.btn-danger{ background: var(--danger) }
-.btn-warning{ background: var(--warn) }
-.icon-btn{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:36px; height:36px; border-radius:10px;
-  border:1px solid var(--line); background: var(--paper); cursor:pointer;
-}
-.icon-btn:hover{ background: var(--brand-100); border-color: var(--brand-300) }
-
-/* =========
-   Badges (prioridad/estado)
-   ========= */
-.badge{
-  display:inline-flex; align-items:center; gap:6px;
-  padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700;
-  border:1px solid var(--line); background: var(--paper);
-}
-.badge.alta{ color:#084c2c; background: #e6f7ef; border-color:#bfead2 }
-.badge.media{ color:#774d00; background:#fff4d6; border-color:#fde6a3 }
-.badge.baja{ color:#4b5563; background:#eef2f7; border-color:#d8dee9 }
-.badge.null{ color:#334155; background:#eef2f7; border-color:#d8dee9 }
-
-.badge.estado-en-curso{ background:#e6f7ef; color:#036241 }
-.badge.estado-pendiente{ background:#fff4d6; color:#8a5a00 }
-.badge.estado-entregado{ background:#eaf5ff; color:#0b5394 }
-.badge.estado-cerrado{ background:#f1f5f9; color:#475569 }
-.badge.estado-supervision{ background:#f0f5ff; color:#1e40af }
-
-/* =========
-   Progreso simple
-   ========= */
-.progress{
-  height:9px; background:#eef2f7; border-radius:999px; overflow:hidden;
-  border:1px solid var(--line);
-}
-.progress > span{
-  display:block; height:100%;
-  background: linear-gradient(90deg, var(--leaf-1), var(--leaf-3));
-  border-right:1px solid rgba(255,255,255,.5);
-}
-
-/* =========
-   Modales (para editar/borrar)
-   ========= */
-.modal-backdrop{
-  position:fixed; inset:0; background:rgba(0,0,0,.28);
-  display:none; align-items:center; justify-content:center; z-index:60;
-}
-.modal{
-  width:min(680px, 92vw);
-  background: var(--paper); border:1px solid var(--line);
-  border-radius: 16px; padding:18px; box-shadow: var(--shadow-md);
-}
-.modal header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px }
-.modal footer{ display:flex; gap:10px; justify-content:flex-end; margin-top:14px }
-.modal.open ~ .modal-backdrop, .modal-backdrop.open{ display:flex }
-
-/* =========
-   Utilidades rápidas
-   ========= */
-.grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap:12px }
-.grid-3{ display:grid; grid-template-columns: repeat(3,1fr); gap:12px }
-.row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-.m0{ margin:0 } .mt8{ margin-top:8px } .mt12{ margin-top:12px } .mt20{ margin-top:20px }
-.mb8{ margin-bottom:8px } .mb16{ margin-bottom:16px } .mb20{ margin-bottom:20px }
-.text-muted{ color:var(--muted) }
-.kbd{
-  background:#111827; color:#fff; padding:2px 6px; border-radius:6px; font-size:12px
-}
-
-/* =========
-   Impresión
-   ========= */
-@media print{
-  .topbar, .nav { display:none !important }
-  main{ margin:0; padding:0 }
-  table{ box-shadow:none; border-color:#bbb }
-  a{ color:#000; text-decoration:none }
-}
-
-/* ===========
-    Navegación 
-    ===========*/
-.navlink {
-  color: var(--cic-text, #1f2937);
+a {
   text-decoration: none;
+  color: inherit;
+}
+
+/* =========================
+   Variables corporativas
+   ========================= */
+:root {
+  --cic-bg: #fafafa;
+  --cic-bg-card: #ffffff;
+  --cic-text: #222222;
+  --cic-border: #e5e5e5;
+  --cic-primary: #0b5fff;
+  --cic-primary-hover: #0849c2;
+}
+
+/* =========================
+   Layout general
+   ========================= */
+main {
+  min-height: calc(100vh - 60px);
+  padding: 16px;
+}
+
+header {
+  background-color: var(--cic-bg);
+  border-bottom: 1px solid var(--cic-border);
+}
+
+/* =========================
+   Navegación superior
+   ========================= */
+nav a {
+  display: inline-block;
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
-}
-.navlink:hover {
-  background: #ffffff;
-  border-color: #e5e7eb;
-}
-.navlink.strong {
-  color: var(--cic-primary, #005bbb);
-  font-weight: 600;
-  border-color: #dbeafe;
-  background: #eff6ff;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
+/* ✅ Hover por CSS (elimina necesidad de onMouseEnter en layout.tsx) */
+nav a:hover {
+  border-color: var(--cic-border);
+  background-color: var(--cic-bg-card);
+  color: var(--cic-primary-hover);
+}
+
+/* =========================
+   Tablas
+   ========================= */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--cic-border);
+  text-align: left;
+}
+
+th {
+  font-weight: 600;
+  color: var(--cic-text);
+}
+
+/* =========================
+   Formularios y botones
+   ========================= */
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--cic-border);
+  border-radius: 6px;
+  font-size: 1rem;
+  outline: none;
+  background: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--cic-primary);
+  box-shadow: 0 0 0 2px rgba(11, 95, 255, 0.15);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background-color: var(--cic-primary);
+  color: #fff;
+  font-size: 0.95rem;
+  transition: background-color 0.15s ease;
+}
+
+button:hover {
+  background-color: var(--cic-primary-hover);
+}
+
+button[disabled],
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================
+   Estados vacíos / mensajes
+   ========================= */
+.empty-state,
+.error-state {
+  border: 1px dashed var(--cic-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--cic-bg-card);
+  color: var(--cic-text);
+}
+
+/* =========================
+   Utilidades de modal (si algún componente usa clases)
+   ========================= */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.modal-container {
+  background: var(--cic-bg-card);
+  border: 1px solid var(--cic-border);
+  border-radius: 12px;
+  padding: 16px;
+  max-width: 90%;
+  margin: auto;
+}
