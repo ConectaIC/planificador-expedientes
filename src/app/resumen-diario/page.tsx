@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import type { CSSProperties } from 'react';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
+import CopyBox from '../../components/CopyBox';
 
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -12,18 +13,15 @@ function ymd(d: Date) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-
 function rangeUltimosDias(dias: number) {
   const hoy = new Date();
   const start = new Date(hoy);
   start.setDate(hoy.getDate() - dias + 1);
   return { start: ymd(start), end: ymd(hoy) };
 }
-
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
 }
-
 function num(n: any): number {
   const v = Number(n);
   return Number.isFinite(v) ? v : 0;
@@ -34,8 +32,6 @@ function sum(arr: number[]) {
 
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
-
-  // Rango: hoy y últimos 10 días
   const { start, end } = rangeUltimosDias(10);
   const hoy = ymd(new Date());
   const fechaLimite = end;
@@ -52,7 +48,7 @@ export default async function ResumenDiarioPage() {
 
   if (errPartes) {
     return (
-      <main>
+      <main style={{ padding: 16 }}>
         <h2>Resumen diario</h2>
         <p>Error al cargar partes: {errPartes.message}</p>
       </main>
@@ -70,7 +66,7 @@ export default async function ResumenDiarioPage() {
 
   if (errTareas) {
     return (
-      <main>
+      <main style={{ padding: 16 }}>
         <h2>Resumen diario</h2>
         <p>Error al cargar tareas: {errTareas.message}</p>
       </main>
@@ -84,7 +80,7 @@ export default async function ResumenDiarioPage() {
 
   if (errExps) {
     return (
-      <main>
+      <main style={{ padding: 16 }}>
         <h2>Resumen diario</h2>
         <p>Error al cargar expedientes: {errExps.message}</p>
       </main>
@@ -119,7 +115,27 @@ export default async function ResumenDiarioPage() {
     })
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
 
-  // Estilos simples (coherentes con globals.css)
+  // --- Texto resumen para copiar ---
+  const fmt = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
+  const lineasTareas = proximasTareas.slice(0, 8).map((t) => {
+    const exp = normalizeOne((t as any).expedientes);
+    const cod = exp?.codigo || '—';
+    return `• ${fmt(t.vencimiento)} — [${cod}] ${t.titulo || ''} (${t.prioridad || '—'})`;
+  });
+  const lineasEntregas = proximasEntregas.slice(0, 8).map((e) => {
+    return `• ${fmt(e.fin)} — [${e.codigo || '—'}] ${e.proyecto || ''} (${e.prioridad || '—'})`;
+  });
+  const textoCopia = [
+    `RESUMEN DIARIO (${fmt(hoy)})`,
+    `- Horas totales: ${horasTotales.toFixed(2)} h`,
+    `- Horas visitas: ${horasVisitas.toFixed(2)} h`,
+    `- Próximas tareas (≤10 días): ${proximasTareas.length}`,
+    ...(lineasTareas.length ? ['  Detalle:', ...lineasTareas] : []),
+    `- Próximas entregas (≤10 días): ${proximasEntregas.length}`,
+    ...(lineasEntregas.length ? ['  Detalle:', ...lineasEntregas] : []),
+  ].join('\n');
+
+  // Estilos
   const mainStyle: CSSProperties = { padding: 16 };
   const cardStyle: CSSProperties = {
     background: 'var(--cic-bg-card, #fff)',
@@ -128,27 +144,22 @@ export default async function ResumenDiarioPage() {
     padding: 12,
     flex: 1,
   };
-  const gridStyle: CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 12,
-  };
+  const gridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 };
   const tblStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
   const thStyle: CSSProperties = {
-    textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
+    textAlign: 'left', borderBottom: '1px solid var(--cic-border, #e5e5e5)', padding: '8px 6px', fontWeight: 600,
   };
-  const tdStyle: CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-  };
+  const tdStyle: CSSProperties = { borderBottom: '1px solid var(--cic-border, #f0f0f0)', padding: '8px 6px' };
   const linkStyle: CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
 
   return (
     <main style={mainStyle}>
       <h2>Resumen diario</h2>
+
+      {/* Botón de copia */}
+      <div style={{ margin: '8px 0 16px' }}>
+        <CopyBox text={textoCopia} />
+      </div>
 
       <section style={gridStyle}>
         <div style={cardStyle}>
@@ -182,7 +193,7 @@ export default async function ResumenDiarioPage() {
         </thead>
         <tbody>
           {proximasTareas.map((t) => {
-            const exp = normalizeOne((t as any).expedientes); // <<— normaliza array/objeto
+            const exp = normalizeOne((t as any).expedientes);
             return (
               <tr key={t.id}>
                 <td style={tdStyle}>{t.vencimiento || '—'}</td>
