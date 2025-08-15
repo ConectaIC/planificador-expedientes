@@ -1,8 +1,8 @@
-// src/app/partes/page.tsx
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import OrdenSimple from '../../components/OrdenSimple';
 
 type Props = {
   searchParams?: {
@@ -67,7 +67,7 @@ export default async function PartesPage({ searchParams }: Props) {
     const cmp =
       typeof va === 'number' && typeof vb === 'number'
         ? va - vb
-        : String(va).localeCompare(String(vb));
+        : String(va).localeCompare(String(vb), 'es', { numeric: true });
     return cmp * (dir === 'desc' ? -1 : 1);
   });
 
@@ -81,17 +81,18 @@ export default async function PartesPage({ searchParams }: Props) {
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <h2>Partes</h2>
-          {/* Orden único automático sin botón (simple GET) */}
-          <form method="get">
-            <select name="orden" defaultValue={orden} onChange={(e) => (e.currentTarget.form as HTMLFormElement).submit()}>
-              <option value="fecha:asc">Orden: Fecha ↑</option>
-              <option value="fecha:desc">Orden: Fecha ↓</option>
-              <option value="horas:asc">Orden: Horas ↑</option>
-              <option value="horas:desc">Orden: Horas ↓</option>
-            </select>
-          </form>
+          {/* Selector de orden en Client Component para evitar handlers en Server */}
+          <OrdenSimple
+            paramName="orden"
+            initialValue={orden}
+            options={[
+              { value: 'fecha:asc',  label: 'Orden: Fecha ↑' },
+              { value: 'fecha:desc', label: 'Orden: Fecha ↓' },
+              { value: 'horas:asc',  label: 'Orden: Horas ↑' },
+              { value: 'horas:desc', label: 'Orden: Horas ↓' },
+            ]}
+          />
         </div>
-        {/* Próxima iteración: modal de alta */}
         <a href="/partes/nuevo" className="btn-link">+ Nuevo parte</a>
       </div>
 
@@ -126,7 +127,6 @@ export default async function PartesPage({ searchParams }: Props) {
                 <td style={td}>{fmt2(p.horas)}</td>
                 <td style={td}>{p.comentario || '—'}</td>
                 <td style={td}>
-                  {/* Próxima iteración: modales */}
                   <a href={`/partes/${p.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
                   <a href={`/partes/${p.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
                 </td>
