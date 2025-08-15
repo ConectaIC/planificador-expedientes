@@ -1,136 +1,144 @@
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
+// src/app/expedientes/page.tsx
+// Tipo: Server Component
 
+import Link from 'next/link';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import FiltrosExepdientes from '../../components/FiltrosExepdientes';
+import FiltrosExpedientes from '../../components/FiltrosExpedientes';
+import NuevoExpediente from '../../components/NuevoExpediente';
+import ExpedienteRowActions from '../../components/ExpedienteRowActions'; // nuevo wrapper cliente
 
-type Props = {
-  searchParams?: {
-    q?: string;
-    estado?: string;
-    prioridad?: string;
-    orden?: string; // "fin:asc|fin:desc|codigo:asc|codigo:desc|horas:asc|horas:desc"
-  };
+type Expediente = {
+  id: number;
+  codigo: string;
+  proyecto: string | null;
+  cliente: string | null;
+  inicio: string | null;
+  fin: string | null;
+  prioridad: string | null;
+  estado: string | null;
+  horas_previstas: number | null;
+  horas_reales: number | null;
 };
 
-export default async function ExpedientesPage({ searchParams }: Props) {
+function fmt(n: any) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v.toFixed(2) : '—';
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const q = (k: string) => {
+    const v = searchParams?.[k];
+    return Array.isArray(v) ? v[0] : v || '';
+  };
+
+  const texto = q('q')?.trim() || '';
+  const estado = q('estado')?.trim() || '';
+  const prioridad = q('prioridad')?.trim() || '';
+  const ordenar = q('orden')?.trim() || 'codigo_asc';
+
   const sb = supabaseAdmin();
 
-  const q = (searchParams?.q || '').trim().toLowerCase();
-  const estado = (searchParams?.estado || '').trim();
-  const prioridad = (searchParams?.prioridad || '').trim();
-  const orden = (searchParams?.orden || 'fin:asc').trim();
-
-  const { data, error } = await sb
+  let query = sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, inicio, fin, prioridad, estado, horas_previstas, horas_reales');
+    .select('id,codigo,proyecto,cliente,inicio,fin,prioridad,estado,horas_previstas,horas_reales');
 
+  if (texto) {
+    query = query.or(
+      `codigo.ilike.%${texto}%,proyecto.ilike.%${texto}%,cliente.ilike.%${texto}%`
+    );
+  }
+  if (estado) query = query.eq('estado', estado);
+  if (prioridad) query = query.eq('prioridad', prioridad);
+
+  const [campo, dir] = (() => {
+    switch (ordenar) {
+      case 'fin_asc':
+        return ['fin', { ascending: true as const }];
+      case 'fin_desc':
+        return ['fin', { ascending: false as const }];
+      case 'horas_desc':
+        return ['horas_reales', { ascending: false as const }];
+      case 'horas_asc':
+        return ['horas_reales', { ascending: true as const }];
+      case 'codigo_desc':
+        return ['codigo', { ascending: false as const }];
+      case 'codigo_asc':
+      default:
+        return ['codigo', { ascending: true as const }];
+    }
+  })();
+
+  const { data, error } = await query.order(campo, dir);
   if (error) {
     return (
-      <main>
-        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2>Expedientes</h2>
-          <a href="/expedientes/nuevo" className="btn-link">+ Nuevo expediente</a>
-        </div>
-        <p className="error-state">Error al cargar expedientes: {error.message}</p>
+      <main className="container">
+        <h1>Expedientes</h1>
+        <div className="error">Error al cargar expedientes: {error.message}</div>
       </main>
     );
   }
 
-  let expedientes = (data || []).filter((e) => {
-    const hitQ =
-      !q ||
-      [e.codigo, e.proyecto, e.cliente].some((v) =>
-        String(v || '').toLowerCase().includes(q)
-      );
-    const hitEstado = !estado || String(e.estado || '') === estado;
-    const hitPrioridad = !prioridad || String(e.prioridad || '') === prioridad;
-    return hitQ && hitEstado && hitPrioridad;
-  });
-
-  const [campo, dir] = (orden.includes(':') ? orden : 'fin:asc').split(':') as [
-    'codigo' | 'inicio' | 'fin' | 'horas',
-    'asc' | 'desc'
-  ];
-  expedientes = expedientes.sort((a: any, b: any) => {
-    let va: any = '';
-    let vb: any = '';
-    switch (campo) {
-      case 'codigo': va = a.codigo || ''; vb = b.codigo || ''; break;
-      case 'inicio': va = a.inicio || ''; vb = b.inicio || ''; break;
-      case 'fin':    va = a.fin || '';    vb = b.fin || '';    break;
-      case 'horas': {
-        const ha = Number(a.horas_reales ?? a.horas_previstas ?? 0);
-        const hb = Number(b.horas_reales ?? b.horas_previstas ?? 0);
-        va = Number.isFinite(ha) ? ha : 0;
-        vb = Number.isFinite(hb) ? hb : 0;
-        break;
-      }
-    }
-    const cmp =
-      typeof va === 'number' && typeof vb === 'number'
-        ? va - vb
-        : String(va).localeCompare(String(vb), 'es', { numeric: true });
-    return cmp * (dir === 'desc' ? -1 : 1);
-  });
-
-  const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
-  const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
-  const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
-  const fmt2 = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
+  const expedientes = (data || []) as Expediente[];
 
   return (
-    <main>
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div>
-          <h2 style={{ marginBottom: 8 }}>Expedientes</h2>
-          <FiltrosExepdientes orderParamName="orden" />
-        </div>
-        <a href="/expedientes/nuevo" className="btn-link">+ Nuevo expediente</a>
+    <main className="container">
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <h1>Expedientes</h1>
+        {/* Botón de alta con modal existente */}
+        <NuevoExpediente />
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th style={th}>Código</th>
-            <th style={th}>Proyecto</th>
-            <th style={th}>Cliente</th>
-            <th style={th}>Estado</th>
-            <th style={th}>Prioridad</th>
-            <th style={th}>Inicio</th>
-            <th style={th}>Fin</th>
-            <th style={th}>Horas</th>
-            <th style={th}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {expedientes.map((e) => (
-            <tr key={e.id}>
-              <td style={td}>
-                {e.codigo ? (
-                  <a href={`/expedientes/${encodeURIComponent(e.codigo)}`} style={link}>{e.codigo}</a>
-                ) : '—'}
-              </td>
-              <td style={td}>{e.proyecto || '—'}</td>
-              <td style={td}>{e.cliente || '—'}</td>
-              <td style={td}>{e.estado || '—'}</td>
-              <td style={td}>{e.prioridad || '—'}</td>
-              <td style={td}>{e.inicio || '—'}</td>
-              <td style={td}>{e.fin || '—'}</td>
-              <td style={td}>{fmt2(e.horas_reales ?? e.horas_previstas)}</td>
-              <td style={td}>
-                <a href={`/expedientes/${encodeURIComponent(e.codigo)}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
-                <a href={`/expedientes/${encodeURIComponent(e.codigo)}?delete=1`} title="Borrar" style={link}>🗑️</a>
-              </td>
-            </tr>
-          ))}
-          {!expedientes.length && (
+      <FiltrosExpedientes />
+
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={9} style={{ ...td, textAlign: 'center', opacity: .7 }}>No hay expedientes con esos criterios.</td>
+              <th>Código</th>
+              <th>Proyecto</th>
+              <th>Cliente</th>
+              <th>Fin</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th>Horas (real / prev.)</th>
+              <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {expedientes.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center' }}>No hay expedientes que cumplan el filtro.</td>
+              </tr>
+            ) : (
+              expedientes.map((e) => (
+                <tr key={e.id}>
+                  <td>
+                    <Link className="btn-link" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>
+                      {e.codigo}
+                    </Link>
+                  </td>
+                  <td>{e.proyecto || '—'}</td>
+                  <td>{e.cliente || '—'}</td>
+                  <td>{e.fin ? new Date(e.fin).toLocaleDateString('es-ES') : '—'}</td>
+                  <td>{e.prioridad || '—'}</td>
+                  <td>{e.estado || '—'}</td>
+                  <td>
+                    <strong>{fmt(e.horas_reales)}</strong> / {fmt(e.horas_previstas)}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {/* Acciones de fila (cliente) reutilizando modales existentes */}
+                    <ExpedienteRowActions expediente={e} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }
