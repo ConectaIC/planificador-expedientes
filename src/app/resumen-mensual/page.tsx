@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import type { CSSProperties } from 'react';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
+import CopyBox from '../../components/CopyBox';
 
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -38,12 +39,12 @@ export default async function ResumenMensualPage() {
   const sb = supabaseAdmin();
   const { start, end } = rangeMesActual();
 
-  // Partes del mes (sin categoria_indirecta)
+  // Partes del mes (incluimos tipo de la tarea si existe)
   const { data: partes, error: errP } = await sb
     .from('partes')
     .select(`
       id, fecha, horas,
-      tarea:tarea_id ( titulo ),
+      tarea:tarea_id ( titulo, tipo ),
       expedientes ( id, codigo, proyecto, cliente )
     `)
     .gte('fecha', start)
@@ -60,7 +61,6 @@ export default async function ResumenMensualPage() {
     .from('expedientes')
     .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  // Errores
   if (errP || errT || errExps) {
     return (
       <main style={{ padding: 16 }}>
@@ -72,25 +72,29 @@ export default async function ResumenMensualPage() {
     );
   }
 
-  // Horas por expediente del mes
-  const horasPorExpediente: Record<
-    string,
-    { codigo: string; proyecto: string; cliente: string; horas: number }
-  > = {};
+  // Horas por expediente del mes + productivas / indirectas
+  const horasPorExpediente: Record<string, { codigo: string; proyecto: string; cliente: string; horas: number }> = {};
+  let horasProductivas = 0;
+  let horasIndirectas = 0;
 
   (partes || []).forEach((p: any) => {
     const exp = normalizeOne(p.expedientes);
-    if (!exp?.codigo) return;
-    const key = exp.codigo;
-    if (!horasPorExpediente[key]) {
-      horasPorExpediente[key] = {
-        codigo: exp.codigo,
-        proyecto: exp.proyecto || '—',
-        cliente: exp.cliente || '—',
-        horas: 0,
-      };
+    if (exp?.codigo) {
+      const key = exp.codigo;
+      if (!horasPorExpediente[key]) {
+        horasPorExpediente[key] = {
+          codigo: exp.codigo,
+          proyecto: exp.proyecto || '—',
+          cliente: exp.cliente || '—',
+          horas: 0,
+        };
+      }
+      horasPorExpediente[key].horas += num(p.horas);
     }
-    horasPorExpediente[key].horas += num(p.horas);
+
+    const tipo = ((p.tarea?.tipo || '') as string).toLowerCase();
+    if (tipo.includes('productiva')) horasProductivas += num(p.horas);
+    else if (tipo) horasIndirectas += num(p.horas);
   });
 
   const horasTotalesMes = sum(Object.values(horasPorExpediente).map((r) => r.horas));
@@ -116,6 +120,22 @@ export default async function ResumenMensualPage() {
     })
     .sort((a: any, b: any) => (a.fin || '').localeCompare(b.fin || ''));
 
+  // --- Texto resumen para copiar ---
+  const fmt = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
+  const top3 = Object.values(horasPorExpediente).sort((a, b) => b.horas - a.horas).slice(0, 3);
+
+  const textoCopia = [
+    `RESUMEN MENSUAL (${fmt(start)}–${fmt(end)})`,
+    `- Horas totales: ${horasTotalesMes.toFixed(2)} h`,
+    `- Horas productivas: ${horasProductivas.toFixed(2)} h`,
+    `- Horas indirectas: ${horasIndirectas.toFixed(2)} h`,
+    `- Horas visitas: ${horasVisitasMes.toFixed(2)} h`,
+    `- Tareas completadas: ${tareasCompletadasMes.length}`,
+    `- Tareas abiertas: ${tareasAbiertas.length}`,
+    `- Top expedientes por horas:`,
+    ...top3.map((r) => `  • [${r.codigo}] ${r.proyecto} — ${r.horas.toFixed(2)} h`),
+  ].join('\n');
+
   // Estilos
   const mainStyle: CSSProperties = { padding: 16 };
   const cardStyle: CSSProperties = {
@@ -125,27 +145,22 @@ export default async function ResumenMensualPage() {
     padding: 12,
     flex: 1,
   };
-  const gridStyle: CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 12,
-  };
+  const gridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 };
   const tblStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
   const thStyle: CSSProperties = {
-    textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
+    textAlign: 'left', borderBottom: '1px solid var(--cic-border, #e5e5e5)', padding: '8px 6px', fontWeight: 600,
   };
-  const tdStyle: CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-  };
+  const tdStyle: CSSProperties = { borderBottom: '1px solid var(--cic-border, #f0f0f0)', padding: '8px 6px' };
   const linkStyle: CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
 
   return (
     <main style={mainStyle}>
       <h2>Resumen mensual</h2>
+
+      {/* Botón de copia */}
+      <div style={{ margin: '8px 0 16px' }}>
+        <CopyBox text={textoCopia} />
+      </div>
 
       <section style={gridStyle}>
         <div style={cardStyle}>
@@ -153,16 +168,16 @@ export default async function ResumenMensualPage() {
           <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasTotalesMes.toFixed(2)}</div>
         </div>
         <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas productivas</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasProductivas.toFixed(2)}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas indirectas</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasIndirectas.toFixed(2)}</div>
+        </div>
+        <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas visitas</div>
           <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasVisitasMes.toFixed(2)}</div>
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Tareas completadas (mes)</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{tareasCompletadasMes.length}</div>
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Tareas abiertas</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{tareasAbiertas.length}</div>
         </div>
       </section>
 
