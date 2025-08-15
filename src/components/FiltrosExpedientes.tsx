@@ -24,7 +24,7 @@ export default function FiltrosExepdientes({ orderParamName = 'orden' }: Props) 
       if (val) params.set(k, val);
       else params.delete(k);
     }
-    params.delete('page'); // si más adelante hay paginación
+    params.delete('page');
 
     router.push(`?${params.toString()}`);
   }
