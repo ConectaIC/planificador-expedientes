@@ -37,7 +37,6 @@ export default async function ExpedientesPage({ searchParams }: Props) {
     );
   }
 
-  // Filtro + búsqueda
   let expedientes = (data || []).filter((e) => {
     const hitQ =
       !q ||
@@ -49,7 +48,6 @@ export default async function ExpedientesPage({ searchParams }: Props) {
     return hitQ && hitEstado && hitPrioridad;
   });
 
-  // Orden (campo:dir)
   const [campo, dir] = (orden.includes(':') ? orden : 'fin:asc').split(':') as [
     'codigo' | 'inicio' | 'fin' | 'horas',
     'asc' | 'desc'
@@ -69,9 +67,10 @@ export default async function ExpedientesPage({ searchParams }: Props) {
         break;
       }
     }
-    const cmp = typeof va === 'number' && typeof vb === 'number'
-      ? (va - vb)
-      : String(va).localeCompare(String(vb), 'es', { numeric: true });
+    const cmp =
+      typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), 'es', { numeric: true });
     return cmp * (dir === 'desc' ? -1 : 1);
   });
 
