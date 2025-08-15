@@ -7,6 +7,7 @@ import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
 import { ymd, rangeUltimosDias, isBetween } from '../../lib/dateUtils';
 import ErrorState from '../../components/ErrorState';
 import TableEmptyRow from '../../components/TableEmptyRow';
+import CopyBox from '../../components/CopyBox';
 
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
@@ -50,44 +51,9 @@ export default async function ResumenDiarioPage() {
     .from('expedientes')
     .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  // Estilos coherentes con globals.css
-  const mainStyle: React.CSSProperties = { padding: 16 };
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--cic-bg-card, #fff)',
-    border: '1px solid var(--cic-border, #e5e5e5)',
-    borderRadius: 8,
-    padding: 12,
-    flex: 1,
-  };
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 12,
-  };
-  const tblStyle: React.CSSProperties = {
-    width: '100%',
-    borderCollapse: 'collapse',
-    marginTop: 8,
-  };
-  const thStyle: React.CSSProperties = {
-    textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
-  };
-  const tdStyle: React.CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-  };
-  const linkStyle: React.CSSProperties = {
-    color: 'var(--cic-primary, #0b5fff)',
-    textDecoration: 'none',
-  };
-
-  // Manejo de errores (ahora con componente reutilizable)
   if (errPartes || errTareas || errExps) {
     return (
-      <main style={mainStyle}>
+      <main style={{ padding: 16 }}>
         <h2>Resumen diario</h2>
         {errPartes && <ErrorState mensaje={`Error al cargar partes: ${errPartes.message}`} />}
         {errTareas && <ErrorState mensaje={`Error al cargar tareas: ${errTareas.message}`} />}
@@ -96,6 +62,7 @@ export default async function ResumenDiarioPage() {
     );
   }
 
+  // --- Métricas ---
   const esVisita = (s?: string | null) => {
     if (!s) return false;
     const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -117,9 +84,60 @@ export default async function ResumenDiarioPage() {
     .filter((e) => isBetween(e.fin, hoy, end))
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
 
+  // --- Texto para la caja de copiado (Agenda) ---
+  const fmt = (d?: string | null) => (d ? (d.includes('T') ? d.split('T')[0] : d).split('-').reverse().join('/') : '—');
+  const lineasTareas = proximasTareas.slice(0, 8).map((t: any) => {
+    const exp = normalizeOne(t.expedientes);
+    return `• ${fmt(t.vencimiento)} — [${exp?.codigo || '—'}] ${t.titulo || ''} (${t.prioridad || '—'})`;
+  });
+  const lineasEntregas = proximasEntregas.slice(0, 8).map((e: any) => {
+    return `• ${fmt(e.fin)} — [${e.codigo || '—'}] ${e.proyecto || ''} (${e.prioridad || '—'})`;
+  });
+  const textoCopia = [
+    `RESUMEN DIARIO (${fmt(hoy)})`,
+    `- Horas totales: ${horasTotales.toFixed(2)} h`,
+    `- Horas visitas: ${horasVisitas.toFixed(2)} h`,
+    `- Próximas tareas (≤10 días): ${proximasTareas.length}`,
+    ...(lineasTareas.length ? ['  Detalle:', ...lineasTareas] : []),
+    `- Próximas entregas (≤10 días): ${proximasEntregas.length}`,
+    ...(lineasEntregas.length ? ['  Detalle:', ...lineasEntregas] : []),
+  ].join('\n');
+
+  // Estilos coherentes con globals.css
+  const mainStyle: React.CSSProperties = { padding: 16 };
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--cic-bg-card, #fff)',
+    border: '1px solid var(--cic-border, #e5e5e5)',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+  };
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
+  };
+  const tblStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: React.CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: React.CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
+
   return (
     <main style={mainStyle}>
       <h2>Resumen diario</h2>
+
+      {/* Caja de copiado */}
+      <div style={{ margin: '8px 0 16px' }}>
+        <CopyBox text={textoCopia} />
+      </div>
 
       <section style={gridStyle}>
         <div style={cardStyle}>
@@ -136,9 +154,7 @@ export default async function ResumenDiarioPage() {
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Próximas entregas (10 días)</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {(proximasEntregas || []).length}
-          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{(proximasEntregas || []).length}</div>
         </div>
       </section>
 
@@ -154,8 +170,8 @@ export default async function ResumenDiarioPage() {
           </tr>
         </thead>
         <tbody>
-          {proximasTareas.map((t) => {
-            const exp = normalizeOne((t as any).expedientes);
+          {proximasTareas.map((t: any) => {
+            const exp = normalizeOne(t.expedientes);
             return (
               <tr key={t.id}>
                 <td style={tdStyle}>{t.vencimiento || '—'}</td>
@@ -186,7 +202,7 @@ export default async function ResumenDiarioPage() {
           </tr>
         </thead>
         <tbody>
-          {proximasEntregas.map((e) => (
+          {proximasEntregas.map((e: any) => (
             <tr key={e.id}>
               <td style={tdStyle}>{e.fin || '—'}</td>
               <td style={tdStyle}>
