@@ -3,231 +3,380 @@ export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
 
+// Helpers de fecha y suma
 function ymd(d: Date) {
   const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-function currentMonthRange() {
+function rangeMesActual() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return { start: ymd(start), end: ymd(end) };
 }
-function tareaTitulo(t:any): string | undefined {
-  if (!t) return undefined;
-  if (Array.isArray(t)) return t[0]?.titulo;
-  return t.titulo;
+function num(n: any): number {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : 0;
 }
+function sum(arr: number[]) {
+  return arr.reduce((a, b) => a + b, 0);
+}
+function tareaTitulo(rel: any): string | undefined {
+  return getTituloFromRelation(rel);
+}
+const esVisita = (s?: string | null) => {
+  if (!s) return false;
+  const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  return t.includes('visita');
+};
 
 export default async function ResumenMensualPage() {
   const sb = supabaseAdmin();
-  const { start, end } = currentMonthRange();
+  const { start, end } = rangeMesActual();
 
-  const { data: partes, error: errPartes } = await sb
+  // Partes del mes con relación a tareas y expedientes
+  const { data: partes, error: errP } = await sb
     .from('partes')
     .select(`
       id, fecha, horas,
-      expedientes ( id, codigo, proyecto, cliente, categoria_indirecta ),
-      tarea:tarea_id ( titulo )
+      tarea:tarea_id ( titulo ),
+      expedientes ( id, codigo, proyecto, cliente, categoria_indirecta )
     `)
     .gte('fecha', start)
     .lte('fecha', end);
 
-  if (errPartes) {
-    return <main><h2>Resumen mensual</h2><p>Error al cargar partes: {errPartes.message}</p></main>;
+  if (errP) {
+    return (
+      <main>
+        <h2>Resumen mensual</h2>
+        <p>Error al cargar partes: {errP.message}</p>
+      </main>
+    );
   }
 
+  // Tareas (abiertas y completadas del mes) con relación a expedientes
   const { data: tareasAll, error: errT } = await sb
     .from('tareas')
     .select(`
-      id, titulo, estado, prioridad, horas_previstas, horas_realizadas, vencimiento,
+      id, titulo, estado, prioridad, vencimiento, fecha_cierre,
       expedientes ( codigo, proyecto, cliente )
     `);
 
   if (errT) {
-    return <main><h2>Resumen mensual</h2><p>Error al cargar tareas: {errT.message}</p></main>;
+    return (
+      <main>
+        <h2>Resumen mensual</h2>
+        <p>Error al cargar tareas: {errT.message}</p>
+      </main>
+    );
   }
 
+  // Expedientes (para próximas entregas del mes)
   const { data: exps, error: errExps } = await sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, fin, estado, prioridad, categoria_indirecta');
+    .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
   if (errExps) {
-    return <main><h2>Resumen mensual</h2><p>Error al cargar expedientes: {errExps.message}</p></main>;
+    return (
+      <main>
+        <h2>Resumen mensual</h2>
+        <p>Error al cargar expedientes: {errExps.message}</p>
+      </main>
+    );
   }
 
-  const activos = (exps || []).filter(e => {
-    const st = (e.estado ?? '').toLowerCase();
-    return st !== 'entregado' && st !== 'cerrado';
-  });
+  // --- Métricas ---
+  // Horas por expediente del mes
+  const horasPorExpediente: Record<
+    string,
+    { codigo: string; proyecto: string; cliente: string; horas: number }
+  > = {};
 
-  const num = (x:any) => (typeof x === 'number' ? x : Number(x || 0));
-  const sum = (ns:number[]) => ns.reduce((a,b)=>a+b,0);
-
-  const horasTotalesMes = sum((partes||[]).map(p => num(p.horas)));
-
-  const horasIndirectas = { GEST:0, RRSS:0, ADMON:0, FORM:0 };
-  let horasProductivas = 0;
-  (partes||[]).forEach(p => {
-    const h = num((p as any).horas);
-    const cat = (p as any).expedientes?.categoria_indirecta || null;
-    if (cat && (cat in horasIndirectas)) {
-      // @ts-ignore
-      horasIndirectas[cat] += h;
-    } else {
-      horasProductivas += h;
+  (partes || []).forEach((p: any) => {
+    const exp = normalizeOne(p.expedientes);
+    if (!exp?.codigo) return;
+    const key = exp.codigo;
+    if (!horasPorExpediente[key]) {
+      horasPorExpediente[key] = {
+        codigo: exp.codigo,
+        proyecto: exp.proyecto || '—',
+        cliente: exp.cliente || '—',
+        horas: 0,
+      };
     }
+    horasPorExpediente[key].horas += num(p.horas);
   });
 
-  const esVisita = (s?: string|null) => {
-    if (!s) return false;
-    const t = s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
-    return t.includes('visita');
-  };
-  const horasVisitas = sum((partes||[])
-    .filter(p => esVisita(tareaTitulo((p as any).tarea)))
-    .map(p => num((p as any).horas)));
+  const horasTotalesMes = sum(Object.values(horasPorExpediente).map((r) => r.horas));
 
-  type Row = { expedienteId:string, codigo:string, proyecto:string, cliente:string, horas:number };
-  const mapHoras = new Map<string, Row>();
-  (partes||[]).forEach(p => {
-    const e = (p as any).expedientes;
-    if (!e) return;
-    const id = e.id as string;
-    const prev = mapHoras.get(id) || { expedienteId:id, codigo:e.codigo||'—', proyecto:e.proyecto||'—', cliente:e.cliente||'—', horas:0 };
-    prev.horas += num((p as any).horas);
-    mapHoras.set(id, prev);
-  });
-  const topExpedientes = Array.from(mapHoras.values())
-    .sort((a,b)=>b.horas - a.horas)
-    .slice(0,10);
+  // Detección de visitas por título de tarea en PARTES
+  const horasVisitasMes = sum(
+    (partes || [])
+      .filter((p: any) => esVisita(tareaTitulo(p.tarea)))
+      .map((p: any) => num(p.horas))
+  );
 
-  const { start: mStart, end: mEnd } = { start, end };
-  const tareasCompletadasMes = (tareasAll || []).filter(t => {
-    const comp = (t.estado ?? '').toLowerCase() === 'completada';
-    if (!comp) return false;
-    const v = (t.vencimiento || '').slice(0,10);
-    return v && v >= mStart && v <= mEnd;
+  // Tareas completadas en el mes (por fecha_cierre en el mes)
+  const tareasCompletadasMes = (tareasAll || []).filter((t: any) => {
+    const f = (t.fecha_cierre || '').slice(0, 10);
+    return f && f >= start && f <= end;
   });
 
-  const tareasAbiertas = (tareasAll || []).filter(t => (t.estado ?? '').toLowerCase() !== 'completada');
-  const abiertasPorPrioridad = { Alta:0, Media:0, Baja:0, Sin:0 };
-  tareasAbiertas.forEach(t => {
-    const pr = (t.prioridad ?? '').toLowerCase();
-    if (pr==='alta') abiertasPorPrioridad.Alta++;
-    else if (pr==='media') abiertasPorPrioridad.Media++;
-    else if (pr==='baja') abiertasPorPrioridad.Baja++;
-    else abiertasPorPrioridad.Sin++;
-  });
+  // Tareas abiertas (no completadas)
+  const tareasAbiertas = (tareasAll || []).filter(
+    (t: any) => (t.estado ?? '').toLowerCase() !== 'completada'
+  );
 
-  const proximasEntregas = (activos||[])
-    .filter(e => {
-      const f = (e.fin || '').slice(0,10);
+  // Visitas detectadas en tareas (no solo partes)
+  const visitas = (tareasAll || [])
+    .filter((t: any) => esVisita(t.titulo))
+    .map((t: any) => {
+      const exp = normalizeOne(t.expedientes);
+      return {
+        id: t.id,
+        titulo: t.titulo || '—',
+        codigo: exp?.codigo || '—',
+        proyecto: exp?.proyecto || '—',
+        cliente: exp?.cliente || '—',
+      };
+    });
+
+  // Próximas entregas del mes (expedientes.fin)
+  const proximasEntregas = (exps || [])
+    .filter((e: any) => {
+      const f = (e.fin || '').slice(0, 10);
       return f && f >= start && f <= end;
     })
-    .sort((a,b)=>(a.fin||'').localeCompare(b.fin||''));
+    .sort((a: any, b: any) => (a.fin || '').localeCompare(b.fin || ''));
 
-  const visitas = (tareasAll || [])
-    .filter(t => esVisita(t.titulo))
-    .map(t => ({
-      id: t.id,
-      titulo: t.titulo,
-      codigo: t.expedientes?.codigo || '—',
-      proyecto: t.expedientes?.proyecto || '—',
-      cliente: t.expedientes?.cliente || '—',
-    }));
+  // --- Estilos básicos coherentes con globals.css ---
+  const mainStyle: React.CSSProperties = { padding: 16 };
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--cic-bg-card, #fff)',
+    border: '1px solid var(--cic-border, #e5e5e5)',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+  };
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
+  };
+  const tblStyle: React.CSSProperties = {
+    width: '100%',
+    borderCollapse: 'collapse',
+    marginTop: 8,
+  };
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: React.CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: React.CSSProperties = {
+    color: 'var(--cic-primary, #0b5fff)',
+    textDecoration: 'none',
+  };
 
-  const cardStyle: React.CSSProperties = { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 };
-  const gridStyle: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, margin:'12px 0' };
-  const tblStyle: React.CSSProperties = { width:'100%', borderCollapse:'separate', borderSpacing:'0 6px', marginTop:8 };
-  const thStyle: React.CSSProperties = { fontWeight:600, textAlign:'left', padding:'6px 10px' };
-  const tdStyle: React.CSSProperties = { background:'#fff', padding:'10px', borderTop:'1px solid #eef1f5', borderBottom:'1px solid #eef1f5' };
-  const linkStyle: React.CSSProperties = { color:'var(--cic-primary)' };
-
+  // --- Render ---
   return (
-    <main>
+    <main style={mainStyle}>
       <h2>Resumen mensual</h2>
-      <p>Período: <b>{start}</b> a <b>{end}</b></p>
 
       <section style={gridStyle}>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas totales (mes)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasTotalesMes.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas productivas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasProductivas.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Visitas de obra (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasVisitas.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Tareas completadas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(tareasCompletadasMes||[]).length}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Tareas abiertas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(tareasAbiertas||[]).length}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Exp. activos</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(activos||[]).length}</div></div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas totales</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {horasTotalesMes.toFixed(2)}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas visitas</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {horasVisitasMes.toFixed(2)}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
+            Tareas completadas (mes)
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {(tareasCompletadasMes || []).length}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
+            Tareas abiertas
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {(tareasAbiertas || []).length}
+          </div>
+        </div>
       </section>
 
-      <section style={gridStyle}>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>GEST (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.GEST.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>RRSS (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.RRSS.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>ADMON (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.ADMON.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>FORM (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.FORM.toFixed(2)}</div></div>
-      </section>
-
-      <h3 style={{marginTop:16}}>Top expedientes por horas del mes</h3>
+      <h3 style={{ marginTop: 16 }}>Top expedientes por horas del mes</h3>
       <table style={tblStyle}>
-        <thead><tr><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Horas</th></tr></thead>
-        <tbody>
-          {topExpedientes.map(r=>(
-            <tr key={r.expedienteId}>
-              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(r.codigo)}`} style={linkStyle}>{r.codigo}</a></td>
-              <td style={tdStyle}>{r.proyecto}</td>
-              <td style={tdStyle}>{r.cliente}</td>
-              <td style={tdStyle}>{r.horas.toFixed(2)}</td>
-            </tr>
-          ))}
-          {!topExpedientes.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
-        </tbody>
-      </table>
-
-      <h3 style={{marginTop:16}}>Tareas abiertas por prioridad</h3>
-      <table style={tblStyle}>
-        <thead><tr><th style={thStyle}>Alta</th><th style={thStyle}>Media</th><th style={thStyle}>Baja</th><th style={thStyle}>Sin prioridad</th></tr></thead>
-        <tbody>
+        <thead>
           <tr>
-            <td style={tdStyle}>{abiertasPorPrioridad.Alta}</td>
-            <td style={tdStyle}>{abiertasPorPrioridad.Media}</td>
-            <td style={tdStyle}>{abiertasPorPrioridad.Baja}</td>
-            <td style={tdStyle}>{abiertasPorPrioridad.Sin}</td>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Horas</th>
           </tr>
-        </tbody>
-      </table>
-
-      <h3 style={{marginTop:16}}>Próximas entregas (este mes)</h3>
-      <table style={tblStyle}>
-        <thead><tr><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Fin</th><th style={thStyle}>Prioridad</th><th style={thStyle}>Estado</th></tr></thead>
+        </thead>
         <tbody>
-          {proximasEntregas.map(e=>(
-            <tr key={e.id}>
-              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>{e.codigo || '—'}</a></td>
-              <td style={tdStyle}>{e.proyecto || '—'}</td>
-              <td style={tdStyle}>{e.cliente || '—'}</td>
-              <td style={tdStyle}>{e.fin || '—'}</td>
-              <td style={tdStyle}>{e.prioridad || '—'}</td>
-              <td style={tdStyle}>{e.estado || '—'}</td>
+          {Object.values(horasPorExpediente)
+            .sort((a, b) => b.horas - a.horas)
+            .map((r) => (
+              <tr key={r.codigo}>
+                <td style={tdStyle}>
+                  <a
+                    href={`/expedientes/${encodeURIComponent(r.codigo)}`}
+                    style={linkStyle}
+                  >
+                    {r.codigo}
+                  </a>
+                </td>
+                <td style={tdStyle}>{r.proyecto}</td>
+                <td style={tdStyle}>{r.cliente}</td>
+                <td style={tdStyle}>{r.horas.toFixed(2)}</td>
+              </tr>
+            ))}
+          {!Object.values(horasPorExpediente).length && (
+            <tr>
+              <td colSpan={4} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
+              </td>
             </tr>
-          ))}
-          {!proximasEntregas.length && <tr><td colSpan={6} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
+          )}
         </tbody>
       </table>
 
-      <h3 style={{marginTop:16}}>Visitas de obra (tareas detectadas)</h3>
+      <h3 style={{ marginTop: 16 }}>Tareas abiertas por prioridad</h3>
       <table style={tblStyle}>
-        <thead><tr><th style={thStyle}>Tarea</th><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th></tr></thead>
+        <thead>
+          <tr>
+            <th style={thStyle}>Vencimiento</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
         <tbody>
-          {(visitas||[]).map(v=>(
+          {(tareasAbiertas || [])
+            .sort((a: any, b: any) =>
+              (a.vencimiento || '').localeCompare(b.vencimiento || '')
+            )
+            .map((t: any) => {
+              const exp = normalizeOne(t.expedientes);
+              return (
+                <tr key={t.id}>
+                  <td style={tdStyle}>{t.vencimiento || '—'}</td>
+                  <td style={tdStyle}>
+                    <a
+                      href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`}
+                      style={linkStyle}
+                    >
+                      {exp?.codigo || '—'}
+                    </a>
+                  </td>
+                  <td style={tdStyle}>{exp?.proyecto || '—'}</td>
+                  <td style={tdStyle}>{exp?.cliente || '—'}</td>
+                  <td style={tdStyle}>{t.prioridad || '—'}</td>
+                </tr>
+              );
+            })}
+          {!tareasAbiertas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <h3 style={{ marginTop: 16 }}>Visitas de obra (tareas detectadas)</h3>
+      <table style={tblStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Tarea</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(visitas || []).map((v) => (
             <tr key={v.id}>
               <td style={tdStyle}>{v.titulo}</td>
-              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(v.codigo)}`} style={linkStyle}>{v.codigo}</a></td>
+              <td style={tdStyle}>
+                <a
+                  href={`/expedientes/${encodeURIComponent(v.codigo)}`}
+                  style={linkStyle}
+                >
+                  {v.codigo}
+                </a>
+              </td>
               <td style={tdStyle}>{v.proyecto}</td>
               <td style={tdStyle}>{v.cliente}</td>
             </tr>
           ))}
-          {!visitas?.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
+          {!visitas.length && (
+            <tr>
+              <td colSpan={4} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <h3 style={{ marginTop: 16 }}>Próximas entregas del mes</h3>
+      <table style={tblStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Fin</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(proximasEntregas || []).map((e: any) => (
+            <tr key={e.id}>
+              <td style={tdStyle}>{e.fin || '—'}</td>
+              <td style={tdStyle}>
+                <a
+                  href={`/expedientes/${encodeURIComponent(e.codigo || '')}`}
+                  style={linkStyle}
+                >
+                  {e.codigo || '—'}
+                </a>
+              </td>
+              <td style={tdStyle}>{e.proyecto || '—'}</td>
+              <td style={tdStyle}>{e.cliente || '—'}</td>
+              <td style={tdStyle}>{e.prioridad || '—'}</td>
+            </tr>
+          ))}
+          {!proximasEntregas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </main>
