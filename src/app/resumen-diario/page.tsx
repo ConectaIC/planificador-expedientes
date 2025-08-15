@@ -10,12 +10,17 @@ function ymd(d: Date) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-
 function rangeUltimosDias(dias: number) {
   const hoy = new Date();
   const start = new Date(hoy);
   start.setDate(hoy.getDate() - dias + 1);
   return { start: ymd(start), end: ymd(hoy) };
+}
+// extrae titulo de tarea cuando puede venir como objeto o array
+function tareaTitulo(t: any): string | undefined {
+  if (!t) return undefined;
+  if (Array.isArray(t)) return t[0]?.titulo;
+  return t.titulo;
 }
 
 export default async function ResumenDiarioPage() {
@@ -72,8 +77,8 @@ export default async function ResumenDiarioPage() {
     return t.includes('visita');
   };
   const horasVisitas = sum((partes || [])
-    .filter(p => esVisita(p.tarea?.titulo))
-    .map(p => num(p.horas)));
+    .filter(p => esVisita(tareaTitulo(p as any)?.toString()))
+    .map(p => num((p as any).horas)));
 
   const proximasTareas = (tareasPend || [])
     .filter(t => {
@@ -110,15 +115,9 @@ export default async function ResumenDiarioPage() {
 
       <h3 style={{marginTop:16}}>Próximas tareas (10 días)</h3>
       <table style={tblStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Vencimiento</th>
-            <th style={thStyle}>Título</th>
-            <th style={thStyle}>Expediente</th>
-            <th style={thStyle}>Cliente</th>
-            <th style={thStyle}>Prioridad</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th style={thStyle}>Vencimiento</th><th style={thStyle}>Título</th><th style={thStyle}>Expediente</th><th style={thStyle}>Cliente</th><th style={thStyle}>Prioridad</th>
+        </tr></thead>
         <tbody>
           {proximasTareas.map(t=>(
             <tr key={t.id}>
@@ -139,24 +138,14 @@ export default async function ResumenDiarioPage() {
 
       <h3 style={{marginTop:16}}>Próximas entregas (10 días)</h3>
       <table style={tblStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Fin</th>
-            <th style={thStyle}>Código</th>
-            <th style={thStyle}>Proyecto</th>
-            <th style={thStyle}>Cliente</th>
-            <th style={thStyle}>Prioridad</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th style={thStyle}>Fin</th><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Prioridad</th>
+        </tr></thead>
         <tbody>
           {proximasEntregas.map(e=>(
             <tr key={e.id}>
               <td style={tdStyle}>{e.fin || '—'}</td>
-              <td style={tdStyle}>
-                <a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>
-                  {e.codigo || '—'}
-                </a>
-              </td>
+              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>{e.codigo || '—'}</a></td>
               <td style={tdStyle}>{e.proyecto || '—'}</td>
               <td style={tdStyle}>{e.cliente || '—'}</td>
               <td style={tdStyle}>{e.prioridad || '—'}</td>
