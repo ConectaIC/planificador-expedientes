@@ -4,10 +4,9 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
-// Componentes EXISTENTES en v3:
+// Componentes existentes
 import TareasDeExpedienteModal from '../../components/TareasDeExpedienteModal';
 import NuevoExpediente from '../../components/NuevoExpediente';
-import ExpedienteEditModal from '../../components/ExpedienteEditModal';
 
 export default async function ExpedientesPage() {
   const sb = supabaseAdmin();
@@ -34,7 +33,7 @@ export default async function ExpedientesPage() {
     );
   }
 
-  // Estilos básicos coherentes con globals.css y sin styled-jsx
+  // Estilos básicos
   const main: React.CSSProperties = { padding: 16 };
   const header: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
@@ -85,8 +84,7 @@ export default async function ExpedientesPage() {
                     tareas={(tareas || []) as any}
                     onChanged={async () => { /* SSR: refresco por navegación cuando sea necesario */ }}
                   />
-                  {/* Modal de edición — componente existente (nombre correcto v3) */}
-                  <ExpedienteEditModal expediente={e as any} />
+                  {/* TODO: Añadir botón de edición (wrapper cliente) en siguiente iteración */}
                 </span>
               </td>
             </tr>
