@@ -21,13 +21,6 @@ function fmtDate(d?: string | null) {
   const [y, m, dd] = s.split('-');
   return `${dd}/${m}/${y}`;
 }
-function prioridadRank(p?: string | null) {
-  const v = (p ?? '').toLowerCase();
-  if (v === 'alta') return 1;
-  if (v === 'media') return 2;
-  if (v === 'baja') return 3;
-  return 4;
-}
 
 export default function FiltrosExpedientes({ expedientes }: { expedientes: Expediente[] }) {
   const [q, setQ] = useState('');
@@ -35,14 +28,13 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
   const [prior, setPrior] = useState<'todas' | 'Alta' | 'Media' | 'Baja' | 'Sin prioridad'>('todas');
   const [orden, setOrden] = useState<'finAsc' | 'finDesc' | 'codigoAsc' | 'codigoDesc' | 'horasAsc' | 'horasDesc'>('finAsc');
 
-  // Estados locales para modales de acciones
   const [editExp, setEditExp] = useState<Expediente | null>(null);
   const [delExp, setDelExp] = useState<Expediente | null>(null);
 
   const lista = useMemo(() => {
     let out = [...(expedientes || [])];
 
-    // Por defecto mostrar sólo activos (no Entregado/Cerrado)
+    // Por defecto: solo activos (no Entregado/Cerrado)
     if (estado === 'todos') {
       out = out.filter(e => {
         const st = (e.estado ?? '').toLowerCase();
@@ -68,16 +60,8 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
     }
 
     out.sort((a, b) => {
-      if (orden === 'finAsc') {
-        const fa = a.fin ?? '9999-12-31';
-        const fb = b.fin ?? '9999-12-31';
-        return fa.localeCompare(fb);
-      }
-      if (orden === 'finDesc') {
-        const fa = a.fin ?? '0000-01-01';
-        const fb = b.fin ?? '0000-01-01';
-        return fb.localeCompare(fa);
-      }
+      if (orden === 'finAsc') return (a.fin ?? '9999-12-31').localeCompare(b.fin ?? '9999-12-31');
+      if (orden === 'finDesc') return (b.fin ?? '0000-01-01').localeCompare(a.fin ?? '0000-01-01');
       if (orden === 'codigoAsc') return (a.codigo ?? '').localeCompare(b.codigo ?? '');
       if (orden === 'codigoDesc') return (b.codigo ?? '').localeCompare(a.codigo ?? '');
       if (orden === 'horasAsc') return (a.horasTotales ?? 0) - (b.horasTotales ?? 0);
@@ -97,7 +81,6 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
 
   return (
     <>
-      {/* Filtros */}
       <div className="toolbar">
         <input
           className="input"
@@ -130,7 +113,6 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
         </select>
       </div>
 
-      {/* Tabla */}
       <table className="tbl">
         <thead>
           <tr>
@@ -174,7 +156,6 @@ export default function FiltrosExpedientes({ expedientes }: { expedientes: Exped
         </tbody>
       </table>
 
-      {/* Modales */}
       {editExp && (
         <ExpedienteEditModal
           open={true}
