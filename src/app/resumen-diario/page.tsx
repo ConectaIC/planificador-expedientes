@@ -3,6 +3,7 @@ export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
 
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -10,148 +11,263 @@ function ymd(d: Date) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
+
 function rangeUltimosDias(dias: number) {
   const hoy = new Date();
   const start = new Date(hoy);
   start.setDate(hoy.getDate() - dias + 1);
   return { start: ymd(start), end: ymd(hoy) };
 }
-// extrae titulo de tarea cuando puede venir como objeto o array
-function tareaTitulo(t: any): string | undefined {
-  if (!t) return undefined;
-  if (Array.isArray(t)) return t[0]?.titulo;
-  return t.titulo;
+
+// Extrae título de tarea cuando puede venir como objeto o array
+function tareaTitulo(rel: any): string | undefined {
+  return getTituloFromRelation(rel);
+}
+
+// Sumas y helpers simples
+function num(n: any): number {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : 0;
+}
+function sum(arr: number[]) {
+  return arr.reduce((a, b) => a + b, 0);
 }
 
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
-  const { start, end } = rangeUltimosDias(4);
 
+  // Rango: hoy y últimos 10 días para el panel
+  const { start, end } = rangeUltimosDias(10);
+  const hoy = ymd(new Date());
+  const fechaLimite = end;
+
+  // Partes (para horas totales / visitas)
   const { data: partes, error: errPartes } = await sb
     .from('partes')
     .select(`
-      id, fecha, horas,
-      expedientes ( id, codigo, proyecto, cliente, categoria_indirecta ),
+      id, fecha, horas, 
       tarea:tarea_id ( titulo )
     `)
     .gte('fecha', start)
     .lte('fecha', end);
 
   if (errPartes) {
-    return <main><h2>Resumen diario</h2><p>Error al cargar partes: {errPartes.message}</p></main>;
+    return (
+      <main>
+        <h2>Resumen diario</h2>
+        <p>Error al cargar partes: {errPartes.message}</p>
+      </main>
+    );
   }
 
-  const hoy = ymd(new Date());
-  const fechaLimite = ymd(new Date(new Date().setDate(new Date().getDate() + 10)));
-
-  const { data: tareasPend, error: errT } = await sb
+  // Tareas pendientes próximas (10 días)
+  const { data: tareasPend, error: errTareas } = await sb
     .from('tareas')
     .select(`
-      id, titulo, estado, prioridad, vencimiento,
+      id, titulo, vencimiento, estado, prioridad,
       expedientes ( codigo, proyecto, cliente )
     `)
-    .or(`estado.ilike.%pendiente%,estado.ilike.%en curso%`);
+    .not('estado', 'ilike', 'completada%');
 
-  if (errT) {
-    return <main><h2>Resumen diario</h2><p>Error al cargar tareas: {errT.message}</p></main>;
+  if (errTareas) {
+    return (
+      <main>
+        <h2>Resumen diario</h2>
+        <p>Error al cargar tareas: {errTareas.message}</p>
+      </main>
+    );
   }
 
-  const { data: exps, error: errExps } = await sb
+  // Expedientes con próximas entregas (10 días)
+  const { data: expedientes, error: errExps } = await sb
     .from('expedientes')
-    .select('id, codigo, proyecto, cliente, fin, estado, prioridad')
-    .neq('estado', 'Entregado')
-    .neq('estado', 'Cerrado');
+    .select(`
+      id, codigo, proyecto, cliente, prioridad, fin
+    `);
 
   if (errExps) {
-    return <main><h2>Resumen diario</h2><p>Error al cargar expedientes: {errExps.message}</p></main>;
+    return (
+      <main>
+        <h2>Resumen diario</h2>
+        <p>Error al cargar expedientes: {errExps.message}</p>
+      </main>
+    );
   }
 
-  const num = (x: any) => (typeof x === 'number' ? x : Number(x || 0));
-  const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
-
-  const horasTotales = sum((partes || []).map(p => num(p.horas)));
-
+  // --- Métricas ---
   const esVisita = (s?: string | null) => {
     if (!s) return false;
     const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
     return t.includes('visita');
   };
-  const horasVisitas = sum((partes || [])
-    .filter(p => esVisita(tareaTitulo(p as any)?.toString()))
-    .map(p => num((p as any).horas)));
+
+  const horasTotales = sum((partes || []).map((p) => num((p as any).horas)));
+
+  const horasVisitas = sum(
+    (partes || [])
+      .filter((p) => esVisita(tareaTitulo((p as any).tarea)))
+      .map((p) => num((p as any).horas))
+  );
 
   const proximasTareas = (tareasPend || [])
-    .filter(t => {
+    .filter((t) => {
       const v = (t.vencimiento || '').slice(0, 10);
       return v && v >= hoy && v <= fechaLimite;
     })
     .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
 
-  const proximasEntregas = (exps || [])
-    .filter(e => {
+  const proximasEntregas = (expedientes || [])
+    .filter((e) => {
       const f = (e.fin || '').slice(0, 10);
       return f && f >= hoy && f <= fechaLimite;
     })
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
 
-  const cardStyle: React.CSSProperties = { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 };
-  const gridStyle: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:12, margin:'12px 0' };
-  const tblStyle: React.CSSProperties = { width:'100%', borderCollapse:'separate', borderSpacing:'0 6px', marginTop:8 };
-  const thStyle: React.CSSProperties = { fontWeight:600, textAlign:'left', padding:'6px 10px' };
-  const tdStyle: React.CSSProperties = { background:'#fff', padding:'10px', borderTop:'1px solid #eef1f5', borderBottom:'1px solid #eef1f5' };
-  const linkStyle: React.CSSProperties = { color:'var(--cic-primary)' };
+  // --- Estilos simples, coherentes con globals.css ---
+  const mainStyle: React.CSSProperties = { padding: 16 };
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--cic-bg-card, #fff)',
+    border: '1px solid var(--cic-border, #e5e5e5)',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+  };
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
+  };
+  const tblStyle: React.CSSProperties = {
+    width: '100%',
+    borderCollapse: 'collapse',
+    marginTop: 8,
+  };
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: React.CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: React.CSSProperties = {
+    color: 'var(--cic-primary, #0b5fff)',
+    textDecoration: 'none',
+  };
 
   return (
-    <main>
+    <main style={mainStyle}>
       <h2>Resumen diario</h2>
-      <p>Últimos días: <b>{start}</b> a <b>{end}</b></p>
 
       <section style={gridStyle}>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas totales</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasTotales.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Visitas de obra (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasVisitas.toFixed(2)}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Próximas tareas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(proximasTareas||[]).length}</div></div>
-        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Próximas entregas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(proximasEntregas||[]).length}</div></div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas totales</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {horasTotales.toFixed(2)}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas visitas</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {horasVisitas.toFixed(2)}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
+            Próximas tareas (10 días)
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {(proximasTareas || []).length}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
+            Próximas entregas (10 días)
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+            {(proximasEntregas || []).length}
+          </div>
+        </div>
       </section>
 
-      <h3 style={{marginTop:16}}>Próximas tareas (10 días)</h3>
+      <h3 style={{ marginTop: 16 }}>Próximas tareas (10 días)</h3>
       <table style={tblStyle}>
-        <thead><tr>
-          <th style={thStyle}>Vencimiento</th><th style={thStyle}>Título</th><th style={thStyle}>Expediente</th><th style={thStyle}>Cliente</th><th style={thStyle}>Prioridad</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th style={thStyle}>Vencimiento</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
         <tbody>
-          {proximasTareas.map(t=>(
-            <tr key={t.id}>
-              <td style={tdStyle}>{t.vencimiento || '—'}</td>
-              <td style={tdStyle}>{t.titulo}</td>
-              <td style={tdStyle}>
-                <a href={`/expedientes/${encodeURIComponent(t.expedientes?.codigo || '')}`} style={linkStyle}>
-                  {t.expedientes?.codigo || '—'}
-                </a>
+          {proximasTareas.map((t) => {
+            const exp = normalizeOne((t as any).expedientes);
+            return (
+              <tr key={t.id}>
+                <td style={tdStyle}>{t.vencimiento || '—'}</td>
+                <td style={tdStyle}>
+                  <a
+                    href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`}
+                    style={linkStyle}
+                  >
+                    {exp?.codigo || '—'}
+                  </a>
+                </td>
+                <td style={tdStyle}>{exp?.proyecto || '—'}</td>
+                <td style={tdStyle}>{exp?.cliente || '—'}</td>
+                <td style={tdStyle}>{t.prioridad || '—'}</td>
+              </tr>
+            );
+          })}
+          {!proximasTareas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
               </td>
-              <td style={tdStyle}>{t.expedientes?.cliente || '—'}</td>
-              <td style={tdStyle}>{t.prioridad || '—'}</td>
             </tr>
-          ))}
-          {!proximasTareas.length && <tr><td colSpan={5} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
+          )}
         </tbody>
       </table>
 
-      <h3 style={{marginTop:16}}>Próximas entregas (10 días)</h3>
+      <h3 style={{ marginTop: 16 }}>Próximas entregas (10 días)</h3>
       <table style={tblStyle}>
-        <thead><tr>
-          <th style={thStyle}>Fin</th><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Prioridad</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th style={thStyle}>Fin</th>
+            <th style={thStyle}>Expediente</th>
+            <th style={thStyle}>Proyecto</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Prioridad</th>
+          </tr>
+        </thead>
         <tbody>
-          {proximasEntregas.map(e=>(
+          {proximasEntregas.map((e) => (
             <tr key={e.id}>
               <td style={tdStyle}>{e.fin || '—'}</td>
-              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>{e.codigo || '—'}</a></td>
+              <td style={tdStyle}>
+                <a
+                  href={`/expedientes/${encodeURIComponent(e.codigo || '')}`}
+                  style={linkStyle}
+                >
+                  {e.codigo || '—'}
+                </a>
+              </td>
               <td style={tdStyle}>{e.proyecto || '—'}</td>
               <td style={tdStyle}>{e.cliente || '—'}</td>
               <td style={tdStyle}>{e.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && <tr><td colSpan={5} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
+          {!proximasEntregas.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
+                —
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </main>
