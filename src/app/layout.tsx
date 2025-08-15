@@ -27,10 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     color: 'var(--cic-text, #222)',
     border: '1px solid transparent',
   };
-  const linkHover: React.CSSProperties = {
-    borderColor: 'var(--cic-border, #ddd)',
-    background: 'var(--cic-bg-card, #fff)',
-  };
 
   return (
     <html lang="es">
@@ -38,13 +34,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header style={headerStyle}>
           <strong>Conecta Ingenieros · Planificador</strong>
           <nav style={navStyle}>
-            {/* Nota: sin styled-jsx; usamos inline styles simples */}
-            <Link href="/" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Inicio</Link>
-            <Link href="/expedientes" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Expedientes</Link>
-            <Link href="/tareas" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Tareas</Link>
-            <Link href="/partes" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Partes</Link>
-            <Link href="/resumen-diario" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Resumen diario</Link>
-            <Link href="/resumen-mensual" style={linkStyle} onMouseEnter={(e)=>Object.assign((e.target as HTMLElement).style, linkHover)}>Resumen mensual</Link>
+            {/* Sin event handlers: Server Component + Link (Client) */}
+            <Link href="/" style={linkStyle}>Inicio</Link>
+            <Link href="/expedientes" style={linkStyle}>Expedientes</Link>
+            <Link href="/tareas" style={linkStyle}>Tareas</Link>
+            <Link href="/partes" style={linkStyle}>Partes</Link>
+            <Link href="/resumen-diario" style={linkStyle}>Resumen diario</Link>
+            <Link href="/resumen-mensual" style={linkStyle}>Resumen mensual</Link>
           </nav>
         </header>
         <main style={{ minHeight: 'calc(100vh - 60px)' }}>{children}</main>
