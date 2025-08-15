@@ -7,19 +7,19 @@ import PartesUI from '../../components/PartesUI';
 export default async function PartesPage() {
   const sb = supabaseAdmin();
 
-  // Expedientes para el selector (id, codigo, proyecto)
+  // Expedientes para el selector
   const { data: expedientes, error: errExp } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto')
     .order('codigo', { ascending: true });
 
-  // Tareas para construir el mapa id -> título (PartesUI muestra el título de la tarea)
+  // Tareas para construir el mapa id -> título (lo usa PartesUI al mostrar filas)
   const { data: tareas, error: errTar } = await sb
     .from('tareas')
     .select('id, titulo')
     .order('titulo', { ascending: true });
 
-  // Últimos partes para listar inicialmente (PartesUI también permite crear/editar/borrar)
+  // Últimos partes para el listado inicial
   const { data: partes, error: errPar } = await sb
     .from('partes')
     .select('id, fecha, hora_inicio, hora_fin, horas, comentario, expediente_id, tarea_id')
@@ -38,7 +38,6 @@ export default async function PartesPage() {
     );
   }
 
-  // Construir mapa { tareaId: titulo }
   const mapTareaTitulos: Record<string, string> = {};
   (tareas || []).forEach((t: any) => {
     if (t?.id) mapTareaTitulos[String(t.id)] = String(t.titulo ?? '');
