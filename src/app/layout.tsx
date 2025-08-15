@@ -1,49 +1,90 @@
 // src/app/layout.tsx
-import type { Metadata } from 'next';
-import Link from 'next/link';
 import './globals.css';
+import Link from 'next/link';
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: {
-    default: 'Planificador | CIC',
-    template: '%s · CIC',
-  },
-  description:
-    'Planificador de expedientes, tareas y partes — Conecta Ingenieros Civiles (CIC).',
-  icons: { icon: '/favicon.ico' },
+  title: 'Planificador de Expedientes — Conecta Ingenieros',
+  description: 'Gestión de expedientes, tareas y partes',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <body>
-        {/* Barra superior fija */}
-        <div className="topbar">
-          <div className="container">
-            {/* Marca */}
-            <Link href="/" className="brand" aria-label="Ir a inicio">
-              {/* Asegúrate de tener el logo en /public/logo_cic.png */}
-              <img src="/logo_cic.png" alt="CIC" />
-              <span>CIC · Conecta Ingenieros Civiles</span>
+        {/* Barra de navegación fija */}
+        <header
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 50,
+            background: 'var(--cic-bg, #f7f7fb)',
+            borderBottom: '1px solid #e5e7eb',
+          }}
+        >
+          <nav
+            style={{
+              maxWidth: 1200,
+              margin: '0 auto',
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            {/* Logo + marca */}
+            <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+              <img
+                src="/logo_cic.png"
+                alt="Conecta Ingenieros"
+                width={36}
+                height={36}
+                style={{ borderRadius: 8, objectFit: 'contain' }}
+              />
+              <span style={{ fontWeight: 700, color: 'var(--cic-primary, #005bbb)' }}>
+                Conecta Ingenieros
+              </span>
             </Link>
 
-            {/* Navegación principal */}
-            <nav className="nav" aria-label="Navegación principal">
-              <Link href="/">Inicio</Link>
-              <Link href="/expedientes">Expedientes</Link>
-              <Link href="/tareas">Tareas</Link>
-              <Link href="/partes">Partes</Link>
-              <Link href="/resumen">Resumen</Link>
-            </nav>
-          </div>
-        </div>
+            {/* Separador flexible */}
+            <div style={{ flex: 1 }} />
 
-        {/* Contenido de la aplicación */}
-        {children}
+            {/* Menú */}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Link className="navlink" href="/">Inicio</Link>
+              <Link className="navlink" href="/expedientes">Expedientes</Link>
+              <Link className="navlink" href="/tareas">Tareas</Link>
+              <Link className="navlink" href="/partes">Partes</Link>
+              <span style={{ width: 12 }} />
+              <Link className="navlink strong" href="/resumen-diario">Resumen diario</Link>
+              <Link className="navlink" href="/resumen-mensual">Resumen mensual</Link>
+            </div>
+          </nav>
+        </header>
+
+        {/* Contenido */}
+        <main style={{ maxWidth: 1200, margin: '16px auto', padding: '0 16px' }}>{children}</main>
+
+        {/* Estilos mínimos para los enlaces del menú */}
+        <style jsx global>{`
+          .navlink {
+            color: var(--cic-text, #1f2937);
+            text-decoration: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+          }
+          .navlink:hover {
+            background: #ffffff;
+            border-color: #e5e7eb;
+          }
+          .navlink.strong {
+            color: var(--cic-primary, #005bbb);
+            font-weight: 600;
+            border-color: #dbeafe;
+            background: #eff6ff;
+          }
+        `}</style>
       </body>
     </html>
   );
