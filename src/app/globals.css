@@ -17,8 +17,8 @@ body {
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--cic-bg, #fafafa);
-  color: var(--cic-text, #222);
+  background-color: var(--cic-bg, #f6f9ff);
+  color: var(--cic-text, #1b2a4a);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -30,28 +30,57 @@ a {
 }
 
 /* =========================
-   Variables corporativas
+   Variables corporativas (CIC)
    ========================= */
 :root {
-  --cic-bg: #fafafa;
-  --cic-bg-card: #ffffff;
-  --cic-text: #222222;
-  --cic-border: #e5e5e5;
-  --cic-primary: #0b5fff;
-  --cic-primary-hover: #0849c2;
+  --cic-bg: #f6f9ff;            /* azul muy claro fondo */
+  --cic-bg-card: #ffffff;       /* tarjetas */
+  --cic-text: #1b2a4a;          /* texto principal (azul petróleo) */
+  --cic-border: #dde6ff;        /* bordes suaves */
+  --cic-primary: #0b5fff;       /* azul corporativo (CTA) */
+  --cic-primary-hover: #0849c2; /* hover CTA */
+  --cic-brand-dark: #0a1d3a;    /* barra superior degradado */
+  --cic-brand-mid: #123a7a;
 }
 
 /* =========================
-   Layout general
+   Layout general centrado
    ========================= */
-main {
-  min-height: calc(100vh - 60px);
+.main-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 16px;
+  min-height: calc(100vh - 84px);
 }
 
 header {
-  background-color: var(--cic-bg);
-  border-bottom: 1px solid var(--cic-border);
+  background: linear-gradient(90deg, var(--cic-brand-dark), var(--cic-brand-mid));
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+
+.brand img {
+  height: 28px;
+  width: auto;
+  display: block;
 }
 
 /* =========================
@@ -60,36 +89,48 @@ header {
 nav a {
   display: inline-block;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid transparent;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  color: #fff;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .06s ease;
 }
 
-/* ✅ Hover por CSS (elimina necesidad de onMouseEnter en layout.tsx) */
 nav a:hover {
-  border-color: var(--cic-border);
-  background-color: var(--cic-bg-card);
-  color: var(--cic-primary-hover);
+  border-color: rgba(255,255,255,.25);
+  background-color: rgba(255,255,255,.08);
+  transform: translateY(-1px);
 }
 
 /* =========================
-   Tablas
+   Tarjetas y tablas
    ========================= */
+.card {
+  background: var(--cic-bg-card);
+  border: 1px solid var(--cic-border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
+  background: var(--cic-bg-card);
+  border: 1px solid var(--cic-border);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 th,
 td {
-  padding: 8px 6px;
+  padding: 10px 8px;
   border-bottom: 1px solid var(--cic-border);
   text-align: left;
 }
 
 th {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--cic-text);
+  background: #f1f6ff;
 }
 
 /* =========================
@@ -101,7 +142,7 @@ textarea {
   width: 100%;
   padding: 8px;
   border: 1px solid var(--cic-border);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 1rem;
   outline: none;
   background: #fff;
@@ -117,16 +158,17 @@ textarea:focus {
 button {
   cursor: pointer;
   border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 10px;
+  padding: 8px 14px;
   background-color: var(--cic-primary);
   color: #fff;
   font-size: 0.95rem;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, transform .06s ease;
 }
 
 button:hover {
   background-color: var(--cic-primary-hover);
+  transform: translateY(-1px);
 }
 
 button[disabled],
@@ -141,25 +183,25 @@ button:disabled {
 .empty-state,
 .error-state {
   border: 1px dashed var(--cic-border);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 14px;
   background: var(--cic-bg-card);
   color: var(--cic-text);
 }
 
 /* =========================
-   Utilidades de modal (si algún componente usa clases)
+   Utilidades de modal
    ========================= */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(10, 29, 58, 0.45);
 }
 
 .modal-container {
   background: var(--cic-bg-card);
   border: 1px solid var(--cic-border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 16px;
   max-width: 90%;
   margin: auto;
