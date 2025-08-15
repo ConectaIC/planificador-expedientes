@@ -2,14 +2,21 @@
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
+import type { CSSProperties } from 'react';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
-import { rangeMesActual, isBetween } from '../../lib/dateUtils';
-import ErrorState from '../../components/ErrorState';
-import TableEmptyRow from '../../components/TableEmptyRow';
 
-function tareaTitulo(rel: any): string | undefined {
-  return getTituloFromRelation(rel);
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function rangeMesActual() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: ymd(start), end: ymd(end) };
 }
 function num(n: any): number {
   const v = Number(n);
@@ -17,6 +24,9 @@ function num(n: any): number {
 }
 function sum(arr: number[]) {
   return arr.reduce((a, b) => a + b, 0);
+}
+function tareaTitulo(rel: any): string | undefined {
+  return getTituloFromRelation(rel);
 }
 const esVisita = (s?: string | null) => {
   if (!s) return false;
@@ -28,12 +38,13 @@ export default async function ResumenMensualPage() {
   const sb = supabaseAdmin();
   const { start, end } = rangeMesActual();
 
+  // Partes del mes (sin categoria_indirecta)
   const { data: partes, error: errP } = await sb
     .from('partes')
     .select(`
       id, fecha, horas,
       tarea:tarea_id ( titulo ),
-      expedientes ( id, codigo, proyecto, cliente, categoria_indirecta )
+      expedientes ( id, codigo, proyecto, cliente )
     `)
     .gte('fecha', start)
     .lte('fecha', end);
@@ -49,47 +60,14 @@ export default async function ResumenMensualPage() {
     .from('expedientes')
     .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  // Estilos coherentes con globals.css
-  const mainStyle: React.CSSProperties = { padding: 16 };
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--cic-bg-card, #fff)',
-    border: '1px solid var(--cic-border, #e5e5e5)',
-    borderRadius: 8,
-    padding: 12,
-    flex: 1,
-  };
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 12,
-  };
-  const tblStyle: React.CSSProperties = {
-    width: '100%',
-    borderCollapse: 'collapse',
-    marginTop: 8,
-  };
-  const thStyle: React.CSSProperties = {
-    textAlign: 'left',
-    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
-    padding: '8px 6px',
-    fontWeight: 600,
-  };
-  const tdStyle: React.CSSProperties = {
-    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
-    padding: '8px 6px',
-  };
-  const linkStyle: React.CSSProperties = {
-    color: 'var(--cic-primary, #0b5fff)',
-    textDecoration: 'none',
-  };
-
+  // Errores
   if (errP || errT || errExps) {
     return (
-      <main style={mainStyle}>
+      <main style={{ padding: 16 }}>
         <h2>Resumen mensual</h2>
-        {errP && <ErrorState mensaje={`Error al cargar partes: ${errP.message}`} />}
-        {errT && <ErrorState mensaje={`Error al cargar tareas: ${errT.message}`} />}
-        {errExps && <ErrorState mensaje={`Error al cargar expedientes: ${errExps.message}`} />}
+        {errP && <p>Error al cargar partes: {errP.message}</p>}
+        {errT && <p>Error al cargar tareas: {errT.message}</p>}
+        {errExps && <p>Error al cargar expedientes: {errExps.message}</p>}
       </main>
     );
   }
@@ -99,6 +77,7 @@ export default async function ResumenMensualPage() {
     string,
     { codigo: string; proyecto: string; cliente: string; horas: number }
   > = {};
+
   (partes || []).forEach((p: any) => {
     const exp = normalizeOne(p.expedientes);
     if (!exp?.codigo) return;
@@ -115,42 +94,54 @@ export default async function ResumenMensualPage() {
   });
 
   const horasTotalesMes = sum(Object.values(horasPorExpediente).map((r) => r.horas));
-
-  // Detección de visitas por título de tarea en PARTES
   const horasVisitasMes = sum(
     (partes || [])
       .filter((p: any) => esVisita(tareaTitulo(p.tarea)))
       .map((p: any) => num(p.horas))
   );
 
-  // Tareas completadas en el mes (por fecha_cierre en el mes)
-  const tareasCompletadasMes = (tareasAll || []).filter((t: any) =>
-    isBetween(t.fecha_cierre, start, end)
-  );
+  const tareasCompletadasMes = (tareasAll || []).filter((t: any) => {
+    const f = (t.fecha_cierre || '').slice(0, 10);
+    return f && f >= start && f <= end;
+  });
 
-  // Tareas abiertas (no completadas)
   const tareasAbiertas = (tareasAll || []).filter(
     (t: any) => (t.estado ?? '').toLowerCase() !== 'completada'
   );
 
-  // Visitas detectadas en tareas
-  const visitas = (tareasAll || [])
-    .filter((t: any) => esVisita(t.titulo))
-    .map((t: any) => {
-      const exp = normalizeOne(t.expedientes);
-      return {
-        id: t.id,
-        titulo: t.titulo || '—',
-        codigo: exp?.codigo || '—',
-        proyecto: exp?.proyecto || '—',
-        cliente: exp?.cliente || '—',
-      };
-    });
-
-  // Próximas entregas del mes (expedientes.fin)
   const proximasEntregas = (exps || [])
-    .filter((e: any) => isBetween(e.fin, start, end))
+    .filter((e: any) => {
+      const f = (e.fin || '').slice(0, 10);
+      return f && f >= start && f <= end;
+    })
     .sort((a: any, b: any) => (a.fin || '').localeCompare(b.fin || ''));
+
+  // Estilos
+  const mainStyle: CSSProperties = { padding: 16 };
+  const cardStyle: CSSProperties = {
+    background: 'var(--cic-bg-card, #fff)',
+    border: '1px solid var(--cic-border, #e5e5e5)',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+  };
+  const gridStyle: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
+  };
+  const tblStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
+  const thStyle: CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
 
   return (
     <main style={mainStyle}>
@@ -167,13 +158,11 @@ export default async function ResumenMensualPage() {
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Tareas completadas (mes)</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {(tareasCompletadasMes || []).length}
-          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{tareasCompletadasMes.length}</div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Tareas abiertas</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{(tareasAbiertas || []).length}</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{tareasAbiertas.length}</div>
         </div>
       </section>
 
@@ -203,7 +192,9 @@ export default async function ResumenMensualPage() {
               </tr>
             ))}
           {!Object.values(horasPorExpediente).length && (
-            <TableEmptyRow colSpan={4} mensaje="Sin registro de horas este mes" />
+            <tr>
+              <td colSpan={4} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
+            </tr>
           )}
         </tbody>
       </table>
@@ -228,10 +219,7 @@ export default async function ResumenMensualPage() {
                 <tr key={t.id}>
                   <td style={tdStyle}>{t.vencimiento || '—'}</td>
                   <td style={tdStyle}>
-                    <a
-                      href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`}
-                      style={linkStyle}
-                    >
+                    <a href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`} style={linkStyle}>
                       {exp?.codigo || '—'}
                     </a>
                   </td>
@@ -242,35 +230,10 @@ export default async function ResumenMensualPage() {
               );
             })}
           {!tareasAbiertas.length && (
-            <TableEmptyRow colSpan={5} mensaje="No hay tareas abiertas" />
-          )}
-        </tbody>
-      </table>
-
-      <h3 style={{ marginTop: 16 }}>Visitas de obra (tareas detectadas)</h3>
-      <table style={tblStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Tarea</th>
-            <th style={thStyle}>Expediente</th>
-            <th style={thStyle}>Proyecto</th>
-            <th style={thStyle}>Cliente</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(visitas || []).map((v) => (
-            <tr key={v.id}>
-              <td style={tdStyle}>{v.titulo}</td>
-              <td style={tdStyle}>
-                <a href={`/expedientes/${encodeURIComponent(v.codigo)}`} style={linkStyle}>
-                  {v.codigo}
-                </a>
-              </td>
-              <td style={tdStyle}>{v.proyecto}</td>
-              <td style={tdStyle}>{v.cliente}</td>
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
             </tr>
-          ))}
-          {!visitas.length && <TableEmptyRow colSpan={4} mensaje="No se han detectado visitas" />}
+          )}
         </tbody>
       </table>
 
@@ -286,21 +249,29 @@ export default async function ResumenMensualPage() {
           </tr>
         </thead>
         <tbody>
-          {(proximasEntregas || []).map((e: any) => (
-            <tr key={e.id}>
-              <td style={tdStyle}>{e.fin || '—'}</td>
-              <td style={tdStyle}>
-                <a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>
-                  {e.codigo || '—'}
-                </a>
-              </td>
-              <td style={tdStyle}>{e.proyecto || '—'}</td>
-              <td style={tdStyle}>{e.cliente || '—'}</td>
-              <td style={tdStyle}>{e.prioridad || '—'}</td>
+          {(exps || [])
+            .filter((e: any) => {
+              const f = (e.fin || '').slice(0, 10);
+              return f && f >= start && f <= end;
+            })
+            .sort((a: any, b: any) => (a.fin || '').localeCompare(b.fin || ''))
+            .map((e: any) => (
+              <tr key={e.id}>
+                <td style={tdStyle}>{e.fin || '—'}</td>
+                <td style={tdStyle}>
+                  <a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>
+                    {e.codigo || '—'}
+                  </a>
+                </td>
+                <td style={tdStyle}>{e.proyecto || '—'}</td>
+                <td style={tdStyle}>{e.cliente || '—'}</td>
+                <td style={tdStyle}>{e.prioridad || '—'}</td>
+              </tr>
+            ))}
+          {!exps?.length && (
+            <tr>
+              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
             </tr>
-          ))}
-          {!proximasEntregas.length && (
-            <TableEmptyRow colSpan={5} mensaje="Sin entregas en este mes" />
           )}
         </tbody>
       </table>
