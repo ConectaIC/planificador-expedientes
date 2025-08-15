@@ -1,145 +1,86 @@
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
+// src/app/partes/page.tsx
+// Tipo: Server Component
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import OrdenSimple from '../../components/OrdenSimple';
+import NewParteModal from '../../components/NewParteModal';
+import PartesTabla from '../../components/PartesTabla';
 
-type Props = {
-  searchParams?: {
-    orden?: string; // "fecha:asc|desc" | "horas:asc|desc"
-  };
+type Parte = {
+  id: number;
+  fecha: string | null;
+  inicio: string | null;
+  fin: string | null;
+  horas: number | null;
+  comentario: string | null;
+  expedientes: { id: number; codigo: string } | null;
+  tareas: { id: number; titulo: string } | null;
 };
 
-export default async function PartesPage({ searchParams }: Props) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const q = (k: string) => {
+    const v = searchParams?.[k];
+    return Array.isArray(v) ? v[0] : v || '';
+  };
+  const ordenar = q('orden')?.trim() || 'fecha_desc';
+
   const sb = supabaseAdmin();
-  const orden = (searchParams?.orden || 'fecha:desc').trim();
 
-  const { data, error } = await sb
+  // Datos para modal de creación
+  const [{ data: exps }, { data: ts }] = await Promise.all([
+    sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true }),
+    sb.from('tareas').select('id,titulo,expediente_id').order('id', { ascending: true }),
+  ]);
+
+  let query = sb
     .from('partes')
-    .select(`
-      id,
-      fecha,
-      horas,
-      comentario,
-      tarea_id,
-      expedientes ( codigo, proyecto, cliente, estado ),
-      tarea:tarea_id ( titulo )
-    `);
+    .select('id,fecha,inicio,fin,horas,comentario,expedientes(id,codigo),tareas(id,titulo)');
 
+  const [campo, dir] = (() => {
+    switch (ordenar) {
+      case 'fecha_asc':
+        return ['fecha', { ascending: true as const }];
+      case 'fecha_desc':
+      default:
+        return ['fecha', { ascending: false as const }];
+    }
+  })();
+
+  const { data, error } = await query.order(campo, dir);
   if (error) {
     return (
-      <main>
-        <div className="card">
-          <h2>Partes</h2>
-        </div>
-        <p className="error-state">Error al cargar partes: {error.message}</p>
+      <main className="container">
+        <h1>Partes</h1>
+        <div className="error">Error al cargar partes: {error.message}</div>
       </main>
     );
   }
 
-  // Solo expedientes activos (no 'Entregado' ni 'Cerrado')
-  const activos = (data || []).filter((p: any) => {
-    const est = String(p.expedientes?.estado || '');
-    return est !== 'Entregado' && est !== 'Cerrado';
-  });
+  const partes = (data || []) as Parte[];
 
-  // Orden único
-  const [campo, dir] = (orden.includes(':') ? orden : 'fecha:desc').split(':') as [
-    'fecha' | 'horas',
-    'asc' | 'desc'
-  ];
-  const partes = activos.sort((a: any, b: any) => {
-    let va: any = '';
-    let vb: any = '';
-    switch (campo) {
-      case 'fecha':
-        va = a.fecha || '';
-        vb = b.fecha || '';
-        break;
-      case 'horas': {
-        const ha = Number(a.horas ?? 0);
-        const hb = Number(b.horas ?? 0);
-        va = Number.isFinite(ha) ? ha : 0;
-        vb = Number.isFinite(hb) ? hb : 0;
-        break;
-      }
-    }
-    const cmp =
-      typeof va === 'number' && typeof vb === 'number'
-        ? va - vb
-        : String(va).localeCompare(String(vb), 'es', { numeric: true });
-    return cmp * (dir === 'desc' ? -1 : 1);
-  });
-
-  const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
-  const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
-  const link: React.CSSProperties = { color: 'var(--cic-primary)', textDecoration: 'none' };
-  const fmt2 = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
+  // Adaptamos a interfaz de PartesTabla
+  const filas = partes.map((p) => ({
+    id: p.id,
+    fecha: p.fecha || null,
+    inicio: p.inicio || null,
+    fin: p.fin || null,
+    horas: p.horas ?? null,
+    comentario: p.comentario || null,
+    expediente: p.expedientes ? { id: p.expedientes.id, codigo: p.expedientes.codigo } : null,
+    tarea: p.tareas ? { id: p.tareas.id, titulo: p.tareas.titulo } : null,
+  }));
 
   return (
-    <main>
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <h2>Partes</h2>
-          {/* Selector de orden en Client Component para evitar handlers en Server */}
-          <OrdenSimple
-            paramName="orden"
-            initialValue={orden}
-            options={[
-              { value: 'fecha:asc',  label: 'Orden: Fecha ↑' },
-              { value: 'fecha:desc', label: 'Orden: Fecha ↓' },
-              { value: 'horas:asc',  label: 'Orden: Horas ↑' },
-              { value: 'horas:desc', label: 'Orden: Horas ↓' },
-            ]}
-          />
-        </div>
-        <a href="/partes/nuevo" className="btn-link">+ Nuevo parte</a>
+    <main className="container">
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <h1>Partes</h1>
+        <NewParteModal expedientes={(exps || []) as any} tareas={(ts || []) as any} />
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th style={th}>Fecha</th>
-            <th style={th}>Expediente</th>
-            <th style={th}>Proyecto</th>
-            <th style={th}>Tarea</th>
-            <th style={th}>Horas</th>
-            <th style={th}>Comentario</th>
-            <th style={th}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {partes.map((p: any) => {
-            const exp = p.expedientes;
-            const tareaTitulo = p.tarea?.titulo || '—';
-            return (
-              <tr key={p.id}>
-                <td style={td}>{p.fecha || '—'}</td>
-                <td style={td}>
-                  {exp?.codigo ? (
-                    <a href={`/expedientes/${encodeURIComponent(exp.codigo)}`} style={link}>
-                      {exp.codigo}
-                    </a>
-                  ) : '—'}
-                </td>
-                <td style={td}>{exp?.proyecto || '—'}</td>
-                <td style={td}>{tareaTitulo}</td>
-                <td style={td}>{fmt2(p.horas)}</td>
-                <td style={td}>{p.comentario || '—'}</td>
-                <td style={td}>
-                  <a href={`/partes/${p.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
-                  <a href={`/partes/${p.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
-                </td>
-              </tr>
-            );
-          })}
-          {!partes.length && (
-            <tr>
-              <td colSpan={7} style={{ ...td, textAlign: 'center', opacity: .7 }}>No hay partes de expedientes activos.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <PartesTabla partes={filas as any} />
     </main>
   );
 }
