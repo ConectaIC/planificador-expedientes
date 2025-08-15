@@ -39,21 +39,22 @@ export default async function ResumenMensualPage() {
   const sb = supabaseAdmin();
   const { start, end } = rangeMesActual();
 
-  // Partes del mes (incluimos tipo de la tarea si existe)
+  // Partes del mes (añadimos tarea_id para mapear tipo sin tocar el select relacional)
   const { data: partes, error: errP } = await sb
     .from('partes')
     .select(`
-      id, fecha, horas,
-      tarea:tarea_id ( titulo, tipo ),
+      id, fecha, horas, tarea_id,
+      tarea:tarea_id ( titulo ),
       expedientes ( id, codigo, proyecto, cliente )
     `)
     .gte('fecha', start)
     .lte('fecha', end);
 
+  // Todas las tareas con 'tipo' (para clasificar productiva/indirecta)
   const { data: tareasAll, error: errT } = await sb
     .from('tareas')
     .select(`
-      id, titulo, estado, prioridad, vencimiento, fecha_cierre,
+      id, titulo, tipo, estado, prioridad, vencimiento, fecha_cierre,
       expedientes ( codigo, proyecto, cliente )
     `);
 
@@ -71,6 +72,12 @@ export default async function ResumenMensualPage() {
       </main>
     );
   }
+
+  // Mapa tarea_id -> tipo
+  const tipoPorTareaId: Record<number, string> = {};
+  (tareasAll || []).forEach((t: any) => {
+    if (t?.id) tipoPorTareaId[Number(t.id)] = String(t.tipo || '').toLowerCase();
+  });
 
   // Horas por expediente del mes + productivas / indirectas
   const horasPorExpediente: Record<string, { codigo: string; proyecto: string; cliente: string; horas: number }> = {};
@@ -92,7 +99,7 @@ export default async function ResumenMensualPage() {
       horasPorExpediente[key].horas += num(p.horas);
     }
 
-    const tipo = ((p.tarea?.tipo || '') as string).toLowerCase();
+    const tipo = (tipoPorTareaId[Number(p.tarea_id)] || '');
     if (tipo.includes('productiva')) horasProductivas += num(p.horas);
     else if (tipo) horasIndirectas += num(p.horas);
   });
@@ -289,6 +296,11 @@ export default async function ResumenMensualPage() {
             </tr>
           )}
         </tbody>
+      </table>
+    </main>
+  );
+}
+
       </table>
     </main>
   );
