@@ -4,27 +4,14 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
+import { ymd, rangeUltimosDias, isBetween } from '../../lib/dateUtils';
+import ErrorState from '../../components/ErrorState';
+import TableEmptyRow from '../../components/TableEmptyRow';
 
-function ymd(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dd}`;
-}
-
-function rangeUltimosDias(dias: number) {
-  const hoy = new Date();
-  const start = new Date(hoy);
-  start.setDate(hoy.getDate() - dias + 1);
-  return { start: ymd(start), end: ymd(hoy) };
-}
-
-// Extrae título de tarea cuando puede venir como objeto o array
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
 }
 
-// Sumas y helpers simples
 function num(n: any): number {
   const v = Number(n);
   return Number.isFinite(v) ? v : 0;
@@ -36,10 +23,8 @@ function sum(arr: number[]) {
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
 
-  // Rango: hoy y últimos 10 días para el panel
   const { start, end } = rangeUltimosDias(10);
   const hoy = ymd(new Date());
-  const fechaLimite = end;
 
   // Partes (para horas totales / visitas)
   const { data: partes, error: errPartes } = await sb
@@ -51,15 +36,6 @@ export default async function ResumenDiarioPage() {
     .gte('fecha', start)
     .lte('fecha', end);
 
-  if (errPartes) {
-    return (
-      <main>
-        <h2>Resumen diario</h2>
-        <p>Error al cargar partes: {errPartes.message}</p>
-      </main>
-    );
-  }
-
   // Tareas pendientes próximas (10 días)
   const { data: tareasPend, error: errTareas } = await sb
     .from('tareas')
@@ -69,61 +45,12 @@ export default async function ResumenDiarioPage() {
     `)
     .not('estado', 'ilike', 'completada%');
 
-  if (errTareas) {
-    return (
-      <main>
-        <h2>Resumen diario</h2>
-        <p>Error al cargar tareas: {errTareas.message}</p>
-      </main>
-    );
-  }
-
   // Expedientes con próximas entregas (10 días)
   const { data: expedientes, error: errExps } = await sb
     .from('expedientes')
-    .select(`
-      id, codigo, proyecto, cliente, prioridad, fin
-    `);
+    .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  if (errExps) {
-    return (
-      <main>
-        <h2>Resumen diario</h2>
-        <p>Error al cargar expedientes: {errExps.message}</p>
-      </main>
-    );
-  }
-
-  // --- Métricas ---
-  const esVisita = (s?: string | null) => {
-    if (!s) return false;
-    const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-    return t.includes('visita');
-  };
-
-  const horasTotales = sum((partes || []).map((p) => num((p as any).horas)));
-
-  const horasVisitas = sum(
-    (partes || [])
-      .filter((p) => esVisita(tareaTitulo((p as any).tarea)))
-      .map((p) => num((p as any).horas))
-  );
-
-  const proximasTareas = (tareasPend || [])
-    .filter((t) => {
-      const v = (t.vencimiento || '').slice(0, 10);
-      return v && v >= hoy && v <= fechaLimite;
-    })
-    .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
-
-  const proximasEntregas = (expedientes || [])
-    .filter((e) => {
-      const f = (e.fin || '').slice(0, 10);
-      return f && f >= hoy && f <= fechaLimite;
-    })
-    .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
-
-  // --- Estilos simples, coherentes con globals.css ---
+  // Estilos coherentes con globals.css
   const mainStyle: React.CSSProperties = { padding: 16 };
   const cardStyle: React.CSSProperties = {
     background: 'var(--cic-bg-card, #fff)',
@@ -157,6 +84,39 @@ export default async function ResumenDiarioPage() {
     textDecoration: 'none',
   };
 
+  // Manejo de errores (ahora con componente reutilizable)
+  if (errPartes || errTareas || errExps) {
+    return (
+      <main style={mainStyle}>
+        <h2>Resumen diario</h2>
+        {errPartes && <ErrorState mensaje={`Error al cargar partes: ${errPartes.message}`} />}
+        {errTareas && <ErrorState mensaje={`Error al cargar tareas: ${errTareas.message}`} />}
+        {errExps && <ErrorState mensaje={`Error al cargar expedientes: ${errExps.message}`} />}
+      </main>
+    );
+  }
+
+  const esVisita = (s?: string | null) => {
+    if (!s) return false;
+    const t = s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+    return t.includes('visita');
+  };
+
+  const horasTotales = sum((partes || []).map((p) => num((p as any).horas)));
+  const horasVisitas = sum(
+    (partes || [])
+      .filter((p) => esVisita(tareaTitulo((p as any).tarea)))
+      .map((p) => num((p as any).horas))
+  );
+
+  const proximasTareas = (tareasPend || [])
+    .filter((t) => isBetween(t.vencimiento, hoy, end))
+    .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
+
+  const proximasEntregas = (expedientes || [])
+    .filter((e) => isBetween(e.fin, hoy, end))
+    .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+
   return (
     <main style={mainStyle}>
       <h2>Resumen diario</h2>
@@ -164,28 +124,18 @@ export default async function ResumenDiarioPage() {
       <section style={gridStyle}>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas totales</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {horasTotales.toFixed(2)}
-          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasTotales.toFixed(2)}</div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Horas visitas</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {horasVisitas.toFixed(2)}
-          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{horasVisitas.toFixed(2)}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
-            Próximas tareas (10 días)
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {(proximasTareas || []).length}
-          </div>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Próximas tareas (10 días)</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{(proximasTareas || []).length}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
-            Próximas entregas (10 días)
-          </div>
+          <div style={{ fontSize: '.9rem', opacity: 0.7 }}>Próximas entregas (10 días)</div>
           <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>
             {(proximasEntregas || []).length}
           </div>
@@ -210,10 +160,7 @@ export default async function ResumenDiarioPage() {
               <tr key={t.id}>
                 <td style={tdStyle}>{t.vencimiento || '—'}</td>
                 <td style={tdStyle}>
-                  <a
-                    href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`}
-                    style={linkStyle}
-                  >
+                  <a href={`/expedientes/${encodeURIComponent(exp?.codigo || '')}`} style={linkStyle}>
                     {exp?.codigo || '—'}
                   </a>
                 </td>
@@ -223,13 +170,7 @@ export default async function ResumenDiarioPage() {
               </tr>
             );
           })}
-          {!proximasTareas.length && (
-            <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
-                —
-              </td>
-            </tr>
-          )}
+          {!proximasTareas.length && <TableEmptyRow colSpan={5} mensaje="Sin tareas próximas" />}
         </tbody>
       </table>
 
@@ -249,10 +190,7 @@ export default async function ResumenDiarioPage() {
             <tr key={e.id}>
               <td style={tdStyle}>{e.fin || '—'}</td>
               <td style={tdStyle}>
-                <a
-                  href={`/expedientes/${encodeURIComponent(e.codigo || '')}`}
-                  style={linkStyle}
-                >
+                <a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>
                   {e.codigo || '—'}
                 </a>
               </td>
@@ -261,13 +199,7 @@ export default async function ResumenDiarioPage() {
               <td style={tdStyle}>{e.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && (
-            <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>
-                —
-              </td>
-            </tr>
-          )}
+          {!proximasEntregas.length && <TableEmptyRow colSpan={5} mensaje="Sin entregas próximas" />}
         </tbody>
       </table>
     </main>
