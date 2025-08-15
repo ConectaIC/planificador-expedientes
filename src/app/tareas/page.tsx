@@ -1,9 +1,7 @@
-// src/app/tareas/page.tsx
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { normalizeOne } from '../../lib/relations';
 import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
 
 type Props = {
@@ -47,7 +45,7 @@ export default async function TareasPage({ searchParams }: Props) {
   }
 
   let tareas = (data || []).filter((t: any) => {
-    const exp = normalizeOne(t.expedientes);
+    const exp = Array.isArray(t.expedientes) ? t.expedientes[0] : t.expedientes;
     const hitQ =
       !q ||
       [t.titulo, exp?.proyecto, exp?.cliente, exp?.codigo]
@@ -80,7 +78,7 @@ export default async function TareasPage({ searchParams }: Props) {
     const cmp =
       typeof va === 'number' && typeof vb === 'number'
         ? va - vb
-        : String(va).localeCompare(String(vb));
+        : String(va).localeCompare(String(vb), 'es', { numeric: true });
     return cmp * (dir === 'desc' ? -1 : 1);
   });
 
@@ -113,7 +111,7 @@ export default async function TareasPage({ searchParams }: Props) {
         </thead>
         <tbody>
           {tareas.map((t: any) => {
-            const exp = normalizeOne(t.expedientes);
+            const exp = Array.isArray(t.expedientes) ? t.expedientes[0] : t.expedientes;
             return (
               <tr key={t.id}>
                 <td style={td}>{t.vencimiento || '—'}</td>
@@ -126,10 +124,7 @@ export default async function TareasPage({ searchParams }: Props) {
                 </td>
                 <td style={td}>{exp?.proyecto || '—'}</td>
                 <td style={td}>{exp?.cliente || '—'}</td>
-                <td style={td}>
-                  {/* Aquí no se crean tareas; solo ver/editar/borrar */}
-                  <span>{t.titulo || '—'}</span>
-                </td>
+                <td style={td}><span>{t.titulo || '—'}</span></td>
                 <td style={td}>{t.estado || '—'}</td>
                 <td style={td}>{t.prioridad || '—'}</td>
                 <td style={td}>{fmt2(t.horas_previstas)}</td>
