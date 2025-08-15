@@ -119,7 +119,6 @@ export default async function ExpedientesPage({ searchParams }: Props) {
               <td style={td}>{e.fin || '—'}</td>
               <td style={td}>{fmt2(e.horas_reales ?? e.horas_previstas)}</td>
               <td style={td}>
-                {/* Próxima iteración: modales */}
                 <a href={`/expedientes/${encodeURIComponent(e.codigo)}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
                 <a href={`/expedientes/${encodeURIComponent(e.codigo)}?delete=1`} title="Borrar" style={link}>🗑️</a>
               </td>
