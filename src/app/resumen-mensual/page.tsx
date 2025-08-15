@@ -10,12 +10,16 @@ function ymd(d: Date) {
   const dd = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
 }
-
 function currentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth()+1, 0);
   return { start: ymd(start), end: ymd(end) };
+}
+function tareaTitulo(t:any): string | undefined {
+  if (!t) return undefined;
+  if (Array.isArray(t)) return t[0]?.titulo;
+  return t.titulo;
 }
 
 export default async function ResumenMensualPage() {
@@ -67,10 +71,9 @@ export default async function ResumenMensualPage() {
 
   const horasIndirectas = { GEST:0, RRSS:0, ADMON:0, FORM:0 };
   let horasProductivas = 0;
-
   (partes||[]).forEach(p => {
-    const h = num(p.horas);
-    const cat = p.expedientes?.categoria_indirecta || null;
+    const h = num((p as any).horas);
+    const cat = (p as any).expedientes?.categoria_indirecta || null;
     if (cat && (cat in horasIndirectas)) {
       // @ts-ignore
       horasIndirectas[cat] += h;
@@ -85,17 +88,17 @@ export default async function ResumenMensualPage() {
     return t.includes('visita');
   };
   const horasVisitas = sum((partes||[])
-    .filter(p => esVisita(p.tarea?.titulo))
-    .map(p => num(p.horas)));
+    .filter(p => esVisita(tareaTitulo((p as any).tarea)))
+    .map(p => num((p as any).horas)));
 
   type Row = { expedienteId:string, codigo:string, proyecto:string, cliente:string, horas:number };
   const mapHoras = new Map<string, Row>();
   (partes||[]).forEach(p => {
-    const e = p.expedientes;
+    const e = (p as any).expedientes;
     if (!e) return;
     const id = e.id as string;
     const prev = mapHoras.get(id) || { expedienteId:id, codigo:e.codigo||'—', proyecto:e.proyecto||'—', cliente:e.cliente||'—', horas:0 };
-    prev.horas += num(p.horas);
+    prev.horas += num((p as any).horas);
     mapHoras.set(id, prev);
   });
   const topExpedientes = Array.from(mapHoras.values())
@@ -137,7 +140,6 @@ export default async function ResumenMensualPage() {
       cliente: t.expedientes?.cliente || '—',
     }));
 
-  // Estilos inline
   const cardStyle: React.CSSProperties = { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 };
   const gridStyle: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, margin:'12px 0' };
   const tblStyle: React.CSSProperties = { width:'100%', borderCollapse:'separate', borderSpacing:'0 6px', marginTop:8 };
@@ -217,7 +219,7 @@ export default async function ResumenMensualPage() {
       <table style={tblStyle}>
         <thead><tr><th style={thStyle}>Tarea</th><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th></tr></thead>
         <tbody>
-          {visitas.map(v=>(
+          {(visitas||[]).map(v=>(
             <tr key={v.id}>
               <td style={tdStyle}>{v.titulo}</td>
               <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(v.codigo)}`} style={linkStyle}>{v.codigo}</a></td>
@@ -225,7 +227,7 @@ export default async function ResumenMensualPage() {
               <td style={tdStyle}>{v.cliente}</td>
             </tr>
           ))}
-          {!visitas.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
+          {!visitas?.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
     </main>
