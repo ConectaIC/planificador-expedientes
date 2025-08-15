@@ -4,8 +4,15 @@ export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
-export default async function PartesPage() {
+type Props = {
+  searchParams?: {
+    orden?: string; // "fecha:asc|desc" | "horas:asc|desc"
+  };
+};
+
+export default async function PartesPage({ searchParams }: Props) {
   const sb = supabaseAdmin();
+  const orden = (searchParams?.orden || 'fecha:desc').trim();
 
   const { data, error } = await sb
     .from('partes')
@@ -15,10 +22,9 @@ export default async function PartesPage() {
       horas,
       comentario,
       tarea_id,
-      expedientes ( codigo, proyecto, cliente ),
+      expedientes ( codigo, proyecto, cliente, estado ),
       tarea:tarea_id ( titulo )
-    `)
-    .order('fecha', { ascending: false });
+    `);
 
   if (error) {
     return (
@@ -26,10 +32,44 @@ export default async function PartesPage() {
         <div className="card">
           <h2>Partes</h2>
         </div>
-        <p className="error-state" style={{ marginTop: 12 }}>Error al cargar partes: {error.message}</p>
+        <p className="error-state">Error al cargar partes: {error.message}</p>
       </main>
     );
   }
+
+  // Solo expedientes activos (no 'Entregado' ni 'Cerrado')
+  const activos = (data || []).filter((p: any) => {
+    const est = String(p.expedientes?.estado || '');
+    return est !== 'Entregado' && est !== 'Cerrado';
+  });
+
+  // Orden único
+  const [campo, dir] = (orden.includes(':') ? orden : 'fecha:desc').split(':') as [
+    'fecha' | 'horas',
+    'asc' | 'desc'
+  ];
+  const partes = activos.sort((a: any, b: any) => {
+    let va: any = '';
+    let vb: any = '';
+    switch (campo) {
+      case 'fecha':
+        va = a.fecha || '';
+        vb = b.fecha || '';
+        break;
+      case 'horas': {
+        const ha = Number(a.horas ?? 0);
+        const hb = Number(b.horas ?? 0);
+        va = Number.isFinite(ha) ? ha : 0;
+        vb = Number.isFinite(hb) ? hb : 0;
+        break;
+      }
+    }
+    const cmp =
+      typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb));
+    return cmp * (dir === 'desc' ? -1 : 1);
+  });
 
   const th: React.CSSProperties = { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid var(--cic-border)', background: '#f1f6ff' };
   const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--cic-border)' };
@@ -39,9 +79,20 @@ export default async function PartesPage() {
   return (
     <main>
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2>Partes</h2>
-        {/* Próxima iteración: esto abrirá un modal cliente de creación */}
-        <a href="/partes/nuevo" style={link}>+ Nuevo parte</a>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <h2>Partes</h2>
+          {/* Orden único automático sin botón (simple GET) */}
+          <form method="get">
+            <select name="orden" defaultValue={orden} onChange={(e) => (e.currentTarget.form as HTMLFormElement).submit()}>
+              <option value="fecha:asc">Orden: Fecha ↑</option>
+              <option value="fecha:desc">Orden: Fecha ↓</option>
+              <option value="horas:asc">Orden: Horas ↑</option>
+              <option value="horas:desc">Orden: Horas ↓</option>
+            </select>
+          </form>
+        </div>
+        {/* Próxima iteración: modal de alta */}
+        <a href="/partes/nuevo" className="btn-link">+ Nuevo parte</a>
       </div>
 
       <table>
@@ -53,10 +104,11 @@ export default async function PartesPage() {
             <th style={th}>Tarea</th>
             <th style={th}>Horas</th>
             <th style={th}>Comentario</th>
+            <th style={th}>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {(data || []).map((p: any) => {
+          {partes.map((p: any) => {
             const exp = p.expedientes;
             const tareaTitulo = p.tarea?.titulo || '—';
             return (
@@ -73,12 +125,17 @@ export default async function PartesPage() {
                 <td style={td}>{tareaTitulo}</td>
                 <td style={td}>{fmt2(p.horas)}</td>
                 <td style={td}>{p.comentario || '—'}</td>
+                <td style={td}>
+                  {/* Próxima iteración: modales */}
+                  <a href={`/partes/${p.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
+                  <a href={`/partes/${p.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
+                </td>
               </tr>
             );
           })}
-          {!data?.length && (
+          {!partes.length && (
             <tr>
-              <td colSpan={6} style={{ ...td, textAlign: 'center', opacity: .7 }}>No hay partes registrados.</td>
+              <td colSpan={7} style={{ ...td, textAlign: 'center', opacity: .7 }}>No hay partes de expedientes activos.</td>
             </tr>
           )}
         </tbody>
