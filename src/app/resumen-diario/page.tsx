@@ -2,24 +2,12 @@
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-import type { CSSProperties } from 'react';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import { normalizeOne, getTituloFromRelation } from '../../lib/relations';
+import { ymd, rangeUltimosDias, isBetween } from '../../lib/dateUtils';
+import ErrorState from '../../components/ErrorState';
+import TableEmptyRow from '../../components/TableEmptyRow';
 import CopyBox from '../../components/CopyBox';
-
-function ymd(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dd}`;
-}
-
-function rangeUltimosDias(dias: number) {
-  const hoy = new Date();
-  const start = new Date(hoy);
-  start.setDate(hoy.getDate() - dias + 1);
-  return { start: ymd(start), end: ymd(hoy) };
-}
 
 function tareaTitulo(rel: any): string | undefined {
   return getTituloFromRelation(rel);
@@ -36,10 +24,8 @@ function sum(arr: number[]) {
 export default async function ResumenDiarioPage() {
   const sb = supabaseAdmin();
 
-  // Rango: hoy y últimos 10 días
   const { start, end } = rangeUltimosDias(10);
   const hoy = ymd(new Date());
-  const fechaLimite = end;
 
   // Partes (para horas totales / visitas)
   const { data: partes, error: errPartes } = await sb
@@ -51,15 +37,6 @@ export default async function ResumenDiarioPage() {
     .gte('fecha', start)
     .lte('fecha', end);
 
-  if (errPartes) {
-    return (
-      <main style={{ padding: 16 }}>
-        <h2>Resumen diario</h2>
-        <p>Error al cargar partes: {errPartes.message}</p>
-      </main>
-    );
-  }
-
   // Tareas pendientes próximas (10 días)
   const { data: tareasPend, error: errTareas } = await sb
     .from('tareas')
@@ -69,25 +46,18 @@ export default async function ResumenDiarioPage() {
     `)
     .not('estado', 'ilike', 'completada%');
 
-  if (errTareas) {
-    return (
-      <main style={{ padding: 16 }}>
-        <h2>Resumen diario</h2>
-        <p>Error al cargar tareas: {errTareas.message}</p>
-      </main>
-    );
-  }
-
   // Expedientes con próximas entregas (10 días)
   const { data: expedientes, error: errExps } = await sb
     .from('expedientes')
     .select(`id, codigo, proyecto, cliente, prioridad, fin`);
 
-  if (errExps) {
+  if (errPartes || errTareas || errExps) {
     return (
       <main style={{ padding: 16 }}>
         <h2>Resumen diario</h2>
-        <p>Error al cargar expedientes: {errExps.message}</p>
+        {errPartes && <ErrorState mensaje={`Error al cargar partes: ${errPartes.message}`} />}
+        {errTareas && <ErrorState mensaje={`Error al cargar tareas: ${errTareas.message}`} />}
+        {errExps && <ErrorState mensaje={`Error al cargar expedientes: ${errExps.message}`} />}
       </main>
     );
   }
@@ -100,7 +70,6 @@ export default async function ResumenDiarioPage() {
   };
 
   const horasTotales = sum((partes || []).map((p) => num((p as any).horas)));
-
   const horasVisitas = sum(
     (partes || [])
       .filter((p) => esVisita(tareaTitulo((p as any).tarea)))
@@ -108,27 +77,20 @@ export default async function ResumenDiarioPage() {
   );
 
   const proximasTareas = (tareasPend || [])
-    .filter((t) => {
-      const v = (t.vencimiento || '').slice(0, 10);
-      return v && v >= hoy && v <= fechaLimite;
-    })
+    .filter((t) => isBetween(t.vencimiento, hoy, end))
     .sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
 
   const proximasEntregas = (expedientes || [])
-    .filter((e) => {
-      const f = (e.fin || '').slice(0, 10);
-      return f && f >= hoy && f <= fechaLimite;
-    })
+    .filter((e) => isBetween(e.fin, hoy, end))
     .sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
 
-  // --- Texto resumen para copiar ---
-  const fmt = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
-  const lineasTareas = proximasTareas.slice(0, 8).map((t) => {
-    const exp = normalizeOne((t as any).expedientes);
-    const cod = exp?.codigo || '—';
-    return `• ${fmt(t.vencimiento)} — [${cod}] ${t.titulo || ''} (${t.prioridad || '—'})`;
+  // --- Texto para la caja de copiado (Agenda) ---
+  const fmt = (d?: string | null) => (d ? (d.includes('T') ? d.split('T')[0] : d).split('-').reverse().join('/') : '—');
+  const lineasTareas = proximasTareas.slice(0, 8).map((t: any) => {
+    const exp = normalizeOne(t.expedientes);
+    return `• ${fmt(t.vencimiento)} — [${exp?.codigo || '—'}] ${t.titulo || ''} (${t.prioridad || '—'})`;
   });
-  const lineasEntregas = proximasEntregas.slice(0, 8).map((e) => {
+  const lineasEntregas = proximasEntregas.slice(0, 8).map((e: any) => {
     return `• ${fmt(e.fin)} — [${e.codigo || '—'}] ${e.proyecto || ''} (${e.prioridad || '—'})`;
   });
   const textoCopia = [
@@ -141,28 +103,38 @@ export default async function ResumenDiarioPage() {
     ...(lineasEntregas.length ? ['  Detalle:', ...lineasEntregas] : []),
   ].join('\n');
 
-  // Estilos
-  const mainStyle: CSSProperties = { padding: 16 };
-  const cardStyle: CSSProperties = {
+  // Estilos coherentes con globals.css
+  const mainStyle: React.CSSProperties = { padding: 16 };
+  const cardStyle: React.CSSProperties = {
     background: 'var(--cic-bg-card, #fff)',
     border: '1px solid var(--cic-border, #e5e5e5)',
     borderRadius: 8,
     padding: 12,
     flex: 1,
   };
-  const gridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 };
-  const tblStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
-  const thStyle: CSSProperties = {
-    textAlign: 'left', borderBottom: '1px solid var(--cic-border, #e5e5e5)', padding: '8px 6px', fontWeight: 600,
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12,
   };
-  const tdStyle: CSSProperties = { borderBottom: '1px solid var(--cic-border, #f0f0f0)', padding: '8px 6px' };
-  const linkStyle: CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
+  const tblStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: 8 };
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
+    borderBottom: '1px solid var(--cic-border, #e5e5e5)',
+    padding: '8px 6px',
+    fontWeight: 600,
+  };
+  const tdStyle: React.CSSProperties = {
+    borderBottom: '1px solid var(--cic-border, #f0f0f0)',
+    padding: '8px 6px',
+  };
+  const linkStyle: React.CSSProperties = { color: 'var(--cic-primary, #0b5fff)', textDecoration: 'none' };
 
   return (
     <main style={mainStyle}>
       <h2>Resumen diario</h2>
 
-      {/* Botón de copia */}
+      {/* Caja de copiado */}
       <div style={{ margin: '8px 0 16px' }}>
         <CopyBox text={textoCopia} />
       </div>
@@ -198,8 +170,8 @@ export default async function ResumenDiarioPage() {
           </tr>
         </thead>
         <tbody>
-          {proximasTareas.map((t) => {
-            const exp = normalizeOne((t as any).expedientes);
+          {proximasTareas.map((t: any) => {
+            const exp = normalizeOne(t.expedientes);
             return (
               <tr key={t.id}>
                 <td style={tdStyle}>{t.vencimiento || '—'}</td>
@@ -214,11 +186,7 @@ export default async function ResumenDiarioPage() {
               </tr>
             );
           })}
-          {!proximasTareas.length && (
-            <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
-            </tr>
-          )}
+          {!proximasTareas.length && <TableEmptyRow colSpan={5} mensaje="Sin tareas próximas" />}
         </tbody>
       </table>
 
@@ -234,7 +202,7 @@ export default async function ResumenDiarioPage() {
           </tr>
         </thead>
         <tbody>
-          {proximasEntregas.map((e) => (
+          {proximasEntregas.map((e: any) => (
             <tr key={e.id}>
               <td style={tdStyle}>{e.fin || '—'}</td>
               <td style={tdStyle}>
@@ -247,11 +215,7 @@ export default async function ResumenDiarioPage() {
               <td style={tdStyle}>{e.prioridad || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && (
-            <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', opacity: 0.7 }}>—</td>
-            </tr>
-          )}
+          {!proximasEntregas.length && <TableEmptyRow colSpan={5} mensaje="Sin entregas próximas" />}
         </tbody>
       </table>
     </main>
