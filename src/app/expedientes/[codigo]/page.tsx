@@ -53,4 +53,55 @@ export default async function ExpedienteDetallePage({ params }: Params) {
           <div><div style={{ opacity: .7, fontSize: '.9rem' }}>Inicio</div><div style={{ fontWeight: 700 }}>{exp.inicio || '—'}</div></div>
           <div><div style={{ opacity: .7, fontSize: '.9rem' }}>Fin</div><div style={{ fontWeight: 700 }}>{exp.fin || '—'}</div></div>
           <div><div style={{ opacity: .7, fontSize: '.9rem' }}>Horas previstas</div><div style={{ fontWeight: 700 }}>{fmt2(exp.horas_previstas)}</div></div>
-          <div><div style={{ opacity: .7, fontSize: '.9rem' }}>Horas reales</div><div style
+          <div><div style={{ opacity: .7, fontSize: '.9rem' }}>Horas reales</div><div style={{ fontWeight: 700 }}>{fmt2(exp.horas_reales)}</div></div>
+        </div>
+      </section>
+
+      <div className="card" style={{ marginBottom: 8 }}>
+        <h3>Tareas del expediente</h3>
+      </div>
+
+      {errT ? (
+        <p className="error-state">Error al cargar tareas: {errT.message}</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th style={th}>Vencimiento</th>
+              <th style={th}>Título</th>
+              <th style={th}>Estado</th>
+              <th style={th}>Prioridad</th>
+              <th style={th}>Horas prev.</th>
+              <th style={th}>Horas real.</th>
+              <th style={th}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(tareas || []).map((t) => (
+              <tr key={t.id}>
+                <td style={td}>{t.vencimiento || '—'}</td>
+                <td style={td}>{t.titulo || '—'}</td>
+                <td style={td}>{t.estado || '—'}</td>
+                <td style={td}>{t.prioridad || '—'}</td>
+                <td style={td}>{fmt2(t.horas_previstas)}</td>
+                <td style={td}>{fmt2(t.horas_realizadas)}</td>
+                <td style={td}>
+                  {/* Próxima iteración: modales (editar/borrar) */}
+                  <a href={`/tareas/${t.id}?edit=1`} title="Editar" style={link}>✏️</a>{' '}
+                  <a href={`/tareas/${t.id}?delete=1`} title="Borrar" style={link}>🗑️</a>
+                </td>
+              </tr>
+            ))}
+            {!tareas?.length && (
+              <tr><td colSpan={7} style={{ ...td, textAlign: 'center', opacity: .7 }}>Sin tareas vinculadas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
+      <p style={{ marginTop: 12 }}>
+        <a href="/expedientes" className="btn-link">← Volver a expedientes</a>
+      </p>
+    </main>
+  );
+}
