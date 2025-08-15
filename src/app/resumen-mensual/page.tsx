@@ -22,7 +22,6 @@ export default async function ResumenMensualPage() {
   const sb = supabaseAdmin();
   const { start, end } = currentMonthRange();
 
-  // PARTES del mes con join a expediente y a tarea (para detectar "visita")
   const { data: partes, error: errPartes } = await sb
     .from('partes')
     .select(`
@@ -37,7 +36,6 @@ export default async function ResumenMensualPage() {
     return <main><h2>Resumen mensual</h2><p>Error al cargar partes: {errPartes.message}</p></main>;
   }
 
-  // TAREAS (para abiertas/completadas y próximas)
   const { data: tareasAll, error: errT } = await sb
     .from('tareas')
     .select(`
@@ -49,7 +47,6 @@ export default async function ResumenMensualPage() {
     return <main><h2>Resumen mensual</h2><p>Error al cargar tareas: {errT.message}</p></main>;
   }
 
-  // EXPEDIENTES (para activos y próximas entregas)
   const { data: exps, error: errExps } = await sb
     .from('expedientes')
     .select('id, codigo, proyecto, cliente, fin, estado, prioridad, categoria_indirecta');
@@ -58,19 +55,16 @@ export default async function ResumenMensualPage() {
     return <main><h2>Resumen mensual</h2><p>Error al cargar expedientes: {errExps.message}</p></main>;
   }
 
-  // Activos: no "Entregado" ni "Cerrado"
   const activos = (exps || []).filter(e => {
     const st = (e.estado ?? '').toLowerCase();
     return st !== 'entregado' && st !== 'cerrado';
   });
 
-  // ---- CÁLCULOS ----
   const num = (x:any) => (typeof x === 'number' ? x : Number(x || 0));
   const sum = (ns:number[]) => ns.reduce((a,b)=>a+b,0);
 
   const horasTotalesMes = sum((partes||[]).map(p => num(p.horas)));
 
-  // INDIRECTAS por categoría (según expediente)
   const horasIndirectas = { GEST:0, RRSS:0, ADMON:0, FORM:0 };
   let horasProductivas = 0;
 
@@ -85,7 +79,6 @@ export default async function ResumenMensualPage() {
     }
   });
 
-  // HORAS DE VISITAS: partes con tarea.titulo que contenga "visita"
   const esVisita = (s?: string|null) => {
     if (!s) return false;
     const t = s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
@@ -95,7 +88,6 @@ export default async function ResumenMensualPage() {
     .filter(p => esVisita(p.tarea?.titulo))
     .map(p => num(p.horas)));
 
-  // Top expedientes por horas del mes
   type Row = { expedienteId:string, codigo:string, proyecto:string, cliente:string, horas:number };
   const mapHoras = new Map<string, Row>();
   (partes||[]).forEach(p => {
@@ -110,7 +102,6 @@ export default async function ResumenMensualPage() {
     .sort((a,b)=>b.horas - a.horas)
     .slice(0,10);
 
-  // Tareas completadas en el mes (aproximación por vencimiento hasta tener fecha_completado)
   const { start: mStart, end: mEnd } = { start, end };
   const tareasCompletadasMes = (tareasAll || []).filter(t => {
     const comp = (t.estado ?? '').toLowerCase() === 'completada';
@@ -119,7 +110,6 @@ export default async function ResumenMensualPage() {
     return v && v >= mStart && v <= mEnd;
   });
 
-  // Tareas abiertas por prioridad
   const tareasAbiertas = (tareasAll || []).filter(t => (t.estado ?? '').toLowerCase() !== 'completada');
   const abiertasPorPrioridad = { Alta:0, Media:0, Baja:0, Sin:0 };
   tareasAbiertas.forEach(t => {
@@ -130,7 +120,6 @@ export default async function ResumenMensualPage() {
     else abiertasPorPrioridad.Sin++;
   });
 
-  // Próximas entregas (expedientes activos con fin dentro del mes)
   const proximasEntregas = (activos||[])
     .filter(e => {
       const f = (e.fin || '').slice(0,10);
@@ -138,7 +127,6 @@ export default async function ResumenMensualPage() {
     })
     .sort((a,b)=>(a.fin||'').localeCompare(b.fin||''));
 
-  // (Opcional) Listado de "Visitas de obra" detectadas por tarea
   const visitas = (tareasAll || [])
     .filter(t => esVisita(t.titulo))
     .map(t => ({
@@ -149,99 +137,97 @@ export default async function ResumenMensualPage() {
       cliente: t.expedientes?.cliente || '—',
     }));
 
+  // Estilos inline
+  const cardStyle: React.CSSProperties = { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 };
+  const gridStyle: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12, margin:'12px 0' };
+  const tblStyle: React.CSSProperties = { width:'100%', borderCollapse:'separate', borderSpacing:'0 6px', marginTop:8 };
+  const thStyle: React.CSSProperties = { fontWeight:600, textAlign:'left', padding:'6px 10px' };
+  const tdStyle: React.CSSProperties = { background:'#fff', padding:'10px', borderTop:'1px solid #eef1f5', borderBottom:'1px solid #eef1f5' };
+  const linkStyle: React.CSSProperties = { color:'var(--cic-primary)' };
+
   return (
     <main>
       <h2>Resumen mensual</h2>
       <p>Período: <b>{start}</b> a <b>{end}</b></p>
 
-      <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,margin:'12px 0'}}>
-        <div className="card"><div className="k">Horas totales (mes)</div><div className="v">{horasTotalesMes.toFixed(2)}</div></div>
-        <div className="card"><div className="k">Horas productivas</div><div className="v">{horasProductivas.toFixed(2)}</div></div>
-        <div className="card"><div className="k">Visitas de obra (h)</div><div className="v">{horasVisitas.toFixed(2)}</div></div>
-        <div className="card"><div className="k">Tareas completadas</div><div className="v">{(tareasCompletadasMes||[]).length}</div></div>
-        <div className="card"><div className="k">Tareas abiertas</div><div className="v">{(tareasAbiertas||[]).length}</div></div>
-        <div className="card"><div className="k">Exp. activos</div><div className="v">{(activos||[]).length}</div></div>
+      <section style={gridStyle}>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas totales (mes)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasTotalesMes.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Horas productivas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasProductivas.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Visitas de obra (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasVisitas.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Tareas completadas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(tareasCompletadasMes||[]).length}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Tareas abiertas</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(tareasAbiertas||[]).length}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>Exp. activos</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{(activos||[]).length}</div></div>
       </section>
 
-      <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,margin:'12px 0'}}>
-        <div className="card"><div className="k">GEST (h)</div><div className="v">{horasIndirectas.GEST.toFixed(2)}</div></div>
-        <div className="card"><div className="k">RRSS (h)</div><div className="v">{horasIndirectas.RRSS.toFixed(2)}</div></div>
-        <div className="card"><div className="k">ADMON (h)</div><div className="v">{horasIndirectas.ADMON.toFixed(2)}</div></div>
-        <div className="card"><div className="k">FORM (h)</div><div className="v">{horasIndirectas.FORM.toFixed(2)}</div></div>
+      <section style={gridStyle}>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>GEST (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.GEST.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>RRSS (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.RRSS.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>ADMON (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.ADMON.toFixed(2)}</div></div>
+        <div style={cardStyle}><div style={{fontSize:'.9rem',color:'#6b7280'}}>FORM (h)</div><div style={{fontSize:'1.4rem',fontWeight:700}}>{horasIndirectas.FORM.toFixed(2)}</div></div>
       </section>
 
       <h3 style={{marginTop:16}}>Top expedientes por horas del mes</h3>
-      <table className="tbl">
-        <thead><tr><th>Código</th><th>Proyecto</th><th>Cliente</th><th>Horas</th></tr></thead>
+      <table style={tblStyle}>
+        <thead><tr><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Horas</th></tr></thead>
         <tbody>
           {topExpedientes.map(r=>(
             <tr key={r.expedienteId}>
-              <td><a href={`/expedientes/${encodeURIComponent(r.codigo)}`}>{r.codigo}</a></td>
-              <td>{r.proyecto}</td>
-              <td>{r.cliente}</td>
-              <td>{r.horas.toFixed(2)}</td>
+              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(r.codigo)}`} style={linkStyle}>{r.codigo}</a></td>
+              <td style={tdStyle}>{r.proyecto}</td>
+              <td style={tdStyle}>{r.cliente}</td>
+              <td style={tdStyle}>{r.horas.toFixed(2)}</td>
             </tr>
           ))}
-          {!topExpedientes.length && <tr><td colSpan={4} style={{textAlign:'center',opacity:.7}}>—</td></tr>}
+          {!topExpedientes.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
 
       <h3 style={{marginTop:16}}>Tareas abiertas por prioridad</h3>
-      <table className="tbl">
-        <thead><tr><th>Alta</th><th>Media</th><th>Baja</th><th>Sin prioridad</th></tr></thead>
+      <table style={tblStyle}>
+        <thead><tr><th style={thStyle}>Alta</th><th style={thStyle}>Media</th><th style={thStyle}>Baja</th><th style={thStyle}>Sin prioridad</th></tr></thead>
         <tbody>
           <tr>
-            <td>{abiertasPorPrioridad.Alta}</td>
-            <td>{abiertasPorPrioridad.Media}</td>
-            <td>{abiertasPorPrioridad.Baja}</td>
-            <td>{abiertasPorPrioridad.Sin}</td>
+            <td style={tdStyle}>{abiertasPorPrioridad.Alta}</td>
+            <td style={tdStyle}>{abiertasPorPrioridad.Media}</td>
+            <td style={tdStyle}>{abiertasPorPrioridad.Baja}</td>
+            <td style={tdStyle}>{abiertasPorPrioridad.Sin}</td>
           </tr>
         </tbody>
       </table>
 
       <h3 style={{marginTop:16}}>Próximas entregas (este mes)</h3>
-      <table className="tbl">
-        <thead><tr><th>Código</th><th>Proyecto</th><th>Cliente</th><th>Fin</th><th>Prioridad</th><th>Estado</th></tr></thead>
+      <table style={tblStyle}>
+        <thead><tr><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th><th style={thStyle}>Fin</th><th style={thStyle}>Prioridad</th><th style={thStyle}>Estado</th></tr></thead>
         <tbody>
           {proximasEntregas.map(e=>(
             <tr key={e.id}>
-              <td><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`}>{e.codigo || '—'}</a></td>
-              <td>{e.proyecto || '—'}</td>
-              <td>{e.cliente || '—'}</td>
-              <td>{e.fin || '—'}</td>
-              <td>{e.prioridad || '—'}</td>
-              <td>{e.estado || '—'}</td>
+              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(e.codigo || '')}`} style={linkStyle}>{e.codigo || '—'}</a></td>
+              <td style={tdStyle}>{e.proyecto || '—'}</td>
+              <td style={tdStyle}>{e.cliente || '—'}</td>
+              <td style={tdStyle}>{e.fin || '—'}</td>
+              <td style={tdStyle}>{e.prioridad || '—'}</td>
+              <td style={tdStyle}>{e.estado || '—'}</td>
             </tr>
           ))}
-          {!proximasEntregas.length && <tr><td colSpan={6} style={{textAlign:'center',opacity:.7}}>—</td></tr>}
+          {!proximasEntregas.length && <tr><td colSpan={6} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
 
       <h3 style={{marginTop:16}}>Visitas de obra (tareas detectadas)</h3>
-      <table className="tbl">
-        <thead><tr><th>Tarea</th><th>Código</th><th>Proyecto</th><th>Cliente</th></tr></thead>
+      <table style={tblStyle}>
+        <thead><tr><th style={thStyle}>Tarea</th><th style={thStyle}>Código</th><th style={thStyle}>Proyecto</th><th style={thStyle}>Cliente</th></tr></thead>
         <tbody>
           {visitas.map(v=>(
             <tr key={v.id}>
-              <td>{v.titulo}</td>
-              <td><a href={`/expedientes/${encodeURIComponent(v.codigo)}`}>{v.codigo}</a></td>
-              <td>{v.proyecto}</td>
-              <td>{v.cliente}</td>
+              <td style={tdStyle}>{v.titulo}</td>
+              <td style={tdStyle}><a href={`/expedientes/${encodeURIComponent(v.codigo)}`} style={linkStyle}>{v.codigo}</a></td>
+              <td style={tdStyle}>{v.proyecto}</td>
+              <td style={tdStyle}>{v.cliente}</td>
             </tr>
           ))}
-          {!visitas.length && <tr><td colSpan={4} style={{textAlign:'center',opacity:.7}}>—</td></tr>}
+          {!visitas.length && <tr><td colSpan={4} style={{...tdStyle, textAlign:'center', opacity:.7}}>—</td></tr>}
         </tbody>
       </table>
-
-      <style jsx>{`
-        .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
-        .k{font-size:.9rem;color:#6b7280}
-        .v{font-size:1.4rem;font-weight:700}
-        .tbl{width:100%;border-collapse:separate;border-spacing:0 6px;margin-top:8px}
-        thead th{font-weight:600;text-align:left;padding:6px 10px}
-        tbody td{background:#fff;padding:10px;border-top:1px solid #eef1f5;border-bottom:1px solid #eef1f5}
-        a{color:var(--cic-primary)}
-      `}</style>
     </main>
   );
 }
