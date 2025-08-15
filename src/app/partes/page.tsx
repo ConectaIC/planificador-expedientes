@@ -1,22 +1,28 @@
 // src/app/partes/page.tsx
-export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 import PartesTabla from '../../components/PartesTabla';
 
+function fmt(d?: string|null) {
+  if (!d) return null;
+  return d.includes('T') ? d.split('T')[0] : d;
+}
+
 export default async function PartesPage() {
   const sb = supabaseAdmin();
 
-  // Cargamos partes con expediente (codigo, proyecto) y tarea (titulo)
+  // Últimos 50 partes (con expediente y título de tarea)
   const { data, error } = await sb
     .from('partes')
     .select(`
-      id, fecha, inicio, fin, horas, comentario,
-      expediente:expediente_id ( codigo, proyecto ),
+      id, fecha, hora_inicio, hora_fin, horas, comentario, tarea_id,
+      expedientes ( codigo, proyecto ),
       tarea:tarea_id ( titulo )
     `)
-    .order('fecha', { ascending: false });
+    .order('fecha', { ascending: false })
+    .order('hora_inicio', { ascending: false })
+    .limit(50);
 
   if (error) {
     return (
@@ -27,37 +33,23 @@ export default async function PartesPage() {
     );
   }
 
-  // Adaptamos al tipo que espera PartesTabla
-  const filas = (data || []).map((p: any) => {
-    const exp =
-      p.expediente?.codigo
-        ? `${p.expediente.codigo} — ${p.expediente.proyecto ?? ''}`.trim()
-        : '—';
-
-    // Aseguramos formatos para el modal de edición
-    const normTime = (t: any) => {
-      if (!t) return '00:00:00';
-      // si llega "HH:mm" lo normalizamos a "HH:mm:00"
-      return String(t).length === 5 ? `${t}:00` : String(t);
-    };
-
-    return {
-      id: p.id as string,
-      fecha: (p.fecha ?? '').split('T')[0] || '', // "YYYY-MM-DD"
-      inicio: normTime(p.inicio),
-      fin: normTime(p.fin),
-      horas: typeof p.horas === 'number' ? p.horas : Number(p.horas || 0),
-      comentario: p.comentario ?? null,
-      expediente: exp,
-      tarea: p.tarea?.titulo ?? null,
-    };
-  });
+  // Normaliza para la tabla
+  const filas = (data || []).map((r:any) => ({
+    id: r.id as string,
+    fecha: fmt(r.fecha) || '',
+    inicio: r.hora_inicio || '',
+    fin: r.hora_fin || '',
+    horas: typeof r.horas === 'number' ? r.horas : Number(r.horas || 0),
+    comentario: r.comentario || '',
+    expediente: r.expedientes ? `${r.expedientes.codigo || '—'} — ${r.expedientes.proyecto || '—'}` : '—',
+    tarea: r.tarea?.titulo ?? null
+  }));
 
   return (
     <main>
       <h2>Partes</h2>
-      {/* 👇 OJO: aquí usamos la prop correcta que espera PartesTabla */}
-      <PartesTabla partes={filas} />
+      {/* 👇 Prop correcta */}
+      <PartesTabla partes={filas}/>
     </main>
   );
 }
