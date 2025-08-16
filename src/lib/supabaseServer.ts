@@ -1,17 +1,17 @@
 // src/lib/supabaseServer.ts
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+export function createClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // mejor si existe
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  // No rompemos el build, pero dejamos claro el problema en runtime.
-  // Puedes cambiar esto a lanzar error si prefieres.
-  console.warn('⚠️ Falta NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY en variables de entorno.');
-}
+  if (!url || (!serviceKey && !anon)) {
+    throw new Error('Faltan variables de entorno de Supabase (URL y SERVICE_ROLE o ANON).');
+  }
 
-export function supabaseServer() {
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false },
+  return createSupabaseClient(url, serviceKey || anon!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { 'X-Client-Info': 'planificador-expedientes/server' } },
   });
 }
