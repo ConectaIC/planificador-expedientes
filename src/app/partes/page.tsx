@@ -11,15 +11,14 @@ type TareaMini = { id: number; titulo: string; expediente_id: number };
 type ParteRow = {
   id: number;
   fecha: string | null;
-  inicio: string | null;
-  fin: string | null;
+  hora_inicio: string | null;
+  hora_fin: string | null;
   horas: number | null;
   comentario: string | null;
   expediente: { id: number; codigo: string } | null;
   tarea: { id: number; titulo: string } | null;
 };
 
-// Normaliza una relación que puede venir como objeto, array u null → objeto o null
 function firstOrNull<T>(rel: T | T[] | null | undefined): T | null {
   if (!rel) return null;
   return Array.isArray(rel) ? (rel[0] ?? null) : rel;
@@ -38,7 +37,6 @@ export default async function Page({
 
   const sb = supabaseAdmin();
 
-  // Datos para modal de creación
   const [{ data: exps }, { data: ts }] = await Promise.all([
     sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true }),
     sb.from('tareas').select('id,titulo,expediente_id').order('id', { ascending: true }),
@@ -46,8 +44,7 @@ export default async function Page({
 
   let query = sb
     .from('partes')
-    // OJO: relaciones pueden venir como array u objeto; se normalizan abajo
-    .select('id,fecha,inicio,fin,horas,comentario,expedientes(id,codigo),tareas(id,titulo)');
+    .select('id,fecha,hora_inicio,hora_fin,horas,comentario,expedientes(id,codigo),tareas(id,titulo)');
 
   const [campo, dir] = (() => {
     switch (ordenar) {
@@ -69,15 +66,14 @@ export default async function Page({
     );
   }
 
-  // Normalización de relaciones
   const partes: ParteRow[] = (data || []).map((p: any) => {
     const exp = firstOrNull<any>(p.expedientes);
     const tarea = firstOrNull<any>(p.tareas);
     return {
       id: Number(p.id),
       fecha: p.fecha ?? null,
-      inicio: p.inicio ?? null,
-      fin: p.fin ?? null,
+      hora_inicio: p.hora_inicio ?? null,
+      hora_fin: p.hora_fin ?? null,
       horas: p.horas ?? null,
       comentario: p.comentario ?? null,
       expediente: exp ? { id: Number(exp.id), codigo: String(exp.codigo) } : null,
@@ -87,9 +83,15 @@ export default async function Page({
 
   return (
     <main className="container">
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div
+        className="card"
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+      >
         <h1>Partes</h1>
-        <NewParteModal expedientes={(exps || []) as ExpedienteMini[]} tareas={(ts || []) as TareaMini[]} />
+        <NewParteModal
+          expedientes={(exps || []) as ExpedienteMini[]}
+          tareas={(ts || []) as TareaMini[]}
+        />
       </div>
 
       <PartesTabla partes={partes as any} />
