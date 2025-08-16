@@ -5,7 +5,6 @@
 
 import { useState, useTransition } from 'react';
 import Modal from './Modal';
-import { toast } from './toast'; // si no existe, sustituye por alert()
 
 type Props = {
   onCreate: (formData: FormData) => Promise<void>;
@@ -23,12 +22,10 @@ export default function NewExpedienteModal({ onCreate }: Props) {
     startTransition(async () => {
       try {
         await onCreate(fd);
-        // @ts-ignore si no tienes toast, usa alert
-        toast ? toast.success('Expediente creado') : alert('Expediente creado');
+        alert('Expediente creado correctamente');
         close();
       } catch (err: any) {
-        // @ts-ignore
-        toast ? toast.error(err?.message || 'Error al crear expediente') : alert(err?.message || 'Error al crear expediente');
+        alert(err?.message || 'Error al crear expediente');
       }
     });
   };
