@@ -1,14 +1,14 @@
 // src/app/expedientes/page.tsx
-import Link from 'next/link';
 import { createClient } from '@/lib/supabaseServer';
-import ClientCreateExpediente from '@/components/ClientCreateExpediente';
-import { createExpedienteAction } from './actions';
+import Link from 'next/link';
+import ExpedienteRowActions from '@/components/ExpedienteRowActions';
+import FiltrosExpedientes from '@/components/FiltrosExpedientes';
 
 type Expediente = {
   id: number;
   codigo: string;
   proyecto: string;
-  cliente: string | null;
+  cliente: string;
   inicio: string | null;
   fin: string | null;
   prioridad: 'Baja' | 'Media' | 'Alta' | null;
@@ -17,27 +17,62 @@ type Expediente = {
   horas_reales: number | null;
 };
 
-export default async function ExpedientesPage() {
+export default async function Page({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from('expedientes')
-    .select('id,codigo,proyecto,cliente,inicio,fin,prioridad,estado,horas_previstas,horas_reales')
-    .order('inicio', { ascending: false });
 
-  if (error) {
-    return <main className="container"><p className="error">Error al cargar expedientes: {error.message}</p></main>;
+  const q = (typeof searchParams.q === 'string' ? searchParams.q : '')?.trim();
+  const estado = (typeof searchParams.estado === 'string' ? searchParams.estado : '')?.trim();
+  const prioridad = (typeof searchParams.prioridad === 'string' ? searchParams.prioridad : '')?.trim();
+  const ordenar = (typeof searchParams.ordenar === 'string' ? searchParams.ordenar : 'inicio')?.trim();
+
+  let query = supabase.from('expedientes').select('*');
+
+  if (q) {
+    query = query.or(`codigo.ilike.%${q}%,proyecto.ilike.%${q}%,cliente.ilike.%${q}%`);
+  }
+  if (estado) {
+    query = query.eq('estado', estado);
+  }
+  if (prioridad) {
+    query = query.eq('prioridad', prioridad);
   }
 
-  const exps = (data || []) as Expediente[];
+  const orderMap: Record<string, { col: string; asc: boolean }> = {
+    inicio: { col: 'inicio', asc: true },
+    fin: { col: 'fin', asc: true },
+    horas: { col: 'horas_reales', asc: false },
+    prioridad: { col: 'prioridad', asc: true },
+  };
+  const { col, asc } = orderMap[ordenar] || orderMap.inicio;
+  query = query.order(col, { ascending: asc, nullsFirst: true });
+
+  const { data, error } = await query;
+  if (error) {
+    return (
+      <div className="card">
+        <h2 className="card-title">Expedientes</h2>
+        <p style={{ color: 'crimson' }}>Error al cargar expedientes: {error.message}</p>
+      </div>
+    );
+  }
+
+  const expedientes = (data || []) as Expediente[];
 
   return (
-    <main className="container">
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <h2>Expedientes</h2>
-        <ClientCreateExpediente action={createExpedienteAction} />
+    <>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-toolbar" style={{ justifyContent: 'space-between' }}>
+          <h2 className="card-title">Expedientes</h2>
+          <div>
+            {/* Botón “solo emoji” para NUEVO */}
+            <Link href="/expedientes?nuevo=1" className="icon-btn" aria-label="Nuevo expediente" title="Nuevo expediente">➕</Link>
+          </div>
+        </div>
+        {/* Filtros automáticos (sin botón aplicar) */}
+        <FiltrosExpedientes />
       </div>
 
-      <div className="table-wrap">
+      <div className="card">
         <table className="table">
           <thead>
             <tr>
@@ -48,30 +83,38 @@ export default async function ExpedientesPage() {
               <th>Fin</th>
               <th>Prioridad</th>
               <th>Estado</th>
-              <th style={{ textAlign: 'right' }}>Horas (prev/reales)</th>
+              <th>Horas (Prev/Real)</th>
+              <th style={{ textAlign: 'center', width: 90 }}>⋯</th>
             </tr>
           </thead>
           <tbody>
-            {exps.map(e => (
+            {expedientes.map((e) => (
               <tr key={e.id}>
                 <td><Link href={`/expedientes/${encodeURIComponent(e.codigo)}`}>{e.codigo}</Link></td>
                 <td>{e.proyecto}</td>
-                <td>{e.cliente ?? '—'}</td>
+                <td>{e.cliente}</td>
                 <td>{e.inicio ?? '—'}</td>
                 <td>{e.fin ?? '—'}</td>
-                <td>{e.prioridad ?? '—'}</td>
+                <td>
+                  <span className={`badge ${e.prioridad === 'Alta' ? 'high' : e.prioridad === 'Media' ? 'medium' : 'low'}`}>
+                    {e.prioridad ?? '—'}
+                  </span>
+                </td>
                 <td>{e.estado ?? '—'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {(e.horas_previstas ?? 0).toFixed(1)} / {(e.horas_reales ?? 0).toFixed(1)}
+                <td>
+                  {(e.horas_previstas ?? 0).toFixed(1)} / <strong>{(e.horas_reales ?? 0).toFixed(1)}</strong>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <ExpedienteRowActions expediente={e} />
                 </td>
               </tr>
             ))}
-            {exps.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', opacity: .7 }}>No hay expedientes</td></tr>
+            {expedientes.length === 0 && (
+              <tr><td colSpan={9} style={{ color: '#64748b', textAlign: 'center', padding: 18 }}>No hay expedientes</td></tr>
             )}
           </tbody>
         </table>
       </div>
-    </main>
+    </>
   );
 }
