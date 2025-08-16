@@ -1,229 +1,123 @@
-// src/app/tareas/page.tsx
-// Tipo: Server Component
-
-'use client';
-
-import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import EditTareaModal, { TareaEditInput, MiniExpediente as MiniExp } from '@/components/EditTareaModal';
 
-type Prioridad = 'Baja' | 'Media' | 'Alta';
-type Estado = 'Pendiente' | 'En curso' | 'Completada';
-
-type Tarea = {
+type Row = {
   id: number;
+  expediente_id: number;
   titulo: string;
-  expediente_id: number | null;
-  vencimiento: string | null;
-  horas_previstas: number | null;
-  horas_realizadas: number | null;
-  estado: Estado | null;
-  prioridad: Prioridad | null;
-  descripcion: string | null;
-  expedientes: { codigo: string } | null; // via foreign select one-to-one
+  horas_previstas?: number | null;
+  horas_realizadas?: number | null;
+  estado?: 'Pendiente' | 'En curso' | 'Completada';
+  prioridad?: 'Baja' | 'Media' | 'Alta';
+  vencimiento?: string | null;
+  expedientes?: { codigo: string } | { codigo: string }[] | null;
 };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false },
+  });
+}
 
-export default function TareasPage() {
-  const [rows, setRows] = useState<Tarea[]>([]);
-  const [exps, setExps] = useState<MiniExp[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+function one<T>(rel: T | T[] | null | undefined): T | null {
+  if (!rel) return null;
+  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
 
-  const [q, setQ] = useState('');
-  const [estado, setEstado] = useState<'todos' | Estado>('todos');
-  const [prioridad, setPrioridad] = useState<'todas' | Prioridad>('todas');
-  const [orden, setOrden] = useState<'venc_asc' | 'venc_desc' | 'codigo_asc' | 'codigo_desc' | 'horas_asc' | 'horas_desc'>('venc_asc');
+async function fetchTareas(q?: string, estado?: string, prioridad?: string, orden?: string) {
+  const supa = getAdmin();
+  let query = supa
+    .from('tareas')
+    .select('id, expediente_id, titulo, horas_previstas, horas_realizadas, estado, prioridad, vencimiento, expedientes(codigo)');
 
-  const [edit, setEdit] = useState<TareaEditInput | null>(null);
+  if (q && q.trim()) {
+    query = query.or(`titulo.ilike.%${q}%`);
+  }
+  if (estado && estado !== 'Todos') query = query.eq('estado', estado);
+  if (prioridad && prioridad !== 'Todas') query = query.eq('prioridad', prioridad);
 
-  async function fetchData() {
-    try {
-      setLoading(true);
-      setErr(null);
-
-      const { data: tareas, error } = await supabase
-        .from('tareas')
-        .select('id,titulo,expediente_id,vencimiento,horas_previstas,horas_realizadas,estado,prioridad,descripcion,expedientes(codigo)')
-        .order('vencimiento', { ascending: true });
-      if (error) throw error;
-
-      const { data: expsData, error: e2 } = await supabase
-        .from('expedientes')
-        .select('id,codigo')
-        .order('codigo', { ascending: true });
-      if (e2) throw e2;
-
-      setRows((tareas as any) ?? []);
-      setExps(((expsData as any) ?? []).map((x: any) => ({ id: x.id, codigo: x.codigo })));
-    } catch (e: any) {
-      setErr(e?.message ?? 'No se pudieron cargar las tareas');
-    } finally {
-      setLoading(false);
-    }
+  switch (orden) {
+    case 'vencimiento':
+      query = query.order('vencimiento', { ascending: true, nullsFirst: true });
+      break;
+    case 'prioridad':
+      query = query.order('prioridad', { ascending: false, nullsFirst: true });
+      break;
+    default:
+      query = query.order('id', { ascending: false });
   }
 
-  useEffect(() => { fetchData(); }, []);
+  const { data, error } = await query;
+  if (error) throw new Error(`Error al cargar tareas: ${error.message}`);
+  return (data ?? []) as Row[];
+}
 
-  const filtradas = useMemo(() => {
-    let list = rows.slice();
-    const qnorm = q.trim().toLowerCase();
-    if (qnorm) {
-      list = list.filter(
-        (r) =>
-          r.titulo?.toLowerCase().includes(qnorm) ||
-          r.expedientes?.codigo?.toLowerCase().includes(qnorm)
-      );
-    }
-    if (estado !== 'todos') list = list.filter((r) => r.estado === estado);
-    if (prioridad !== 'todas') list = list.filter((r) => r.prioridad === prioridad);
+export default async function Page({ searchParams }: { searchParams: any }) {
+  const q = searchParams?.q ?? '';
+  const estado = searchParams?.estado ?? 'Todos';
+  const prioridad = searchParams?.prioridad ?? 'Todas';
+  const orden = searchParams?.orden ?? 'vencimiento';
 
-    switch (orden) {
-      case 'venc_desc':
-        list.sort((a, b) => (b.vencimiento || '').localeCompare(a.vencimiento || ''));
-        break;
-      case 'codigo_asc':
-        list.sort((a, b) => (a.expedientes?.codigo || '').localeCompare(b.expedientes?.codigo || ''));
-        break;
-      case 'codigo_desc':
-        list.sort((a, b) => (b.expedientes?.codigo || '').localeCompare(a.expedientes?.codigo || ''));
-        break;
-      case 'horas_asc':
-        list.sort((a, b) => (a.horas_realizadas ?? 0) - (b.horas_realizadas ?? 0));
-        break;
-      case 'horas_desc':
-        list.sort((a, b) => (b.horas_realizadas ?? 0) - (a.horas_realizadas ?? 0));
-        break;
-      default:
-        list.sort((a, b) => (a.vencimiento || '').localeCompare(b.vencimiento || ''));
-    }
-    return list;
-  }, [rows, q, estado, prioridad, orden]);
-
-  async function handleSave(payload: TareaEditInput) {
-    const { error } = await supabase.from('tareas').update({
-      titulo: payload.titulo,
-      expediente_id: payload.expediente_id,
-      vencimiento: payload.vencimiento || null,
-      horas_previstas: payload.horas_previstas ?? null,
-      estado: payload.estado ?? null,
-      prioridad: payload.prioridad ?? null,
-      descripcion: payload.descripcion ?? null,
-    }).eq('id', payload.id);
-    if (error) throw error;
-    await fetchData();
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm('¿Borrar tarea?')) return;
-    const { error } = await supabase.from('tareas').delete().eq('id', id);
-    if (error) alert(error.message);
-    await fetchData();
-  }
+  const rows = await fetchTareas(q, estado, prioridad, orden);
 
   return (
     <main className="container">
-      <h1>Tareas</h1>
-
-      <div className="filters">
-        <input className="inp" placeholder="Buscar por proyecto, expediente, cliente o título" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="inp" value={estado} onChange={(e) => setEstado(e.target.value as any)}>
-          <option value="todos">Estado: todos</option>
-          <option value="Pendiente">Pendiente</option>
-          <option value="En curso">En curso</option>
-          <option value="Completada">Completada</option>
-        </select>
-        <select className="inp" value={prioridad} onChange={(e) => setPrioridad(e.target.value as any)}>
-          <option value="todas">Prioridad: todas</option>
-          <option value="Baja">Baja</option>
-          <option value="Media">Media</option>
-          <option value="Alta">Alta</option>
-        </select>
-        <select className="inp" value={orden} onChange={(e) => setOrden(e.target.value as any)}>
-          <option value="venc_asc">Orden: Vencimiento ↑</option>
-          <option value="venc_desc">Orden: Vencimiento ↓</option>
-          <option value="codigo_asc">Orden: Código ↑</option>
-          <option value="codigo_desc">Orden: Código ↓</option>
-          <option value="horas_asc">Orden: Horas ↑</option>
-          <option value="horas_desc">Orden: Horas ↓</option>
-        </select>
+      <div className="toolbar">
+        <form method="get" className="filters">
+          <input name="q" placeholder="Buscar por título" defaultValue={q} className="input" />
+          <select name="estado" defaultValue={estado} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option>Todos</option>
+            <option>Pendiente</option>
+            <option>En curso</option>
+            <option>Completada</option>
+          </select>
+          <select name="prioridad" defaultValue={prioridad} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option>Todas</option>
+            <option>Baja</option>
+            <option>Media</option>
+            <option>Alta</option>
+          </select>
+          <select name="orden" defaultValue={orden} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option value="vencimiento">Ordenar: Vencimiento</option>
+            <option value="prioridad">Ordenar: Prioridad</option>
+            <option value="id">Ordenar: Recientes</option>
+          </select>
+        </form>
       </div>
 
-      {err && <div className="alert error">Error al cargar tareas: {err}</div>}
-      {loading ? (
-        <div className="muted">Cargando…</div>
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Título</th>
-                <th>Expediente</th>
-                <th>Estado</th>
-                <th>Prioridad</th>
-                <th>Vencimiento</th>
-                <th>Horas (real / prev.)</th>
-                <th style={{ width: 90, textAlign: 'center' }}>Acciones</th>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Expediente</th>
+            <th>Previstas</th>
+            <th>Realizadas</th>
+            <th>Estado</th>
+            <th>Prioridad</th>
+            <th>Vencimiento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((t) => {
+            const exp = one(t.expedientes);
+            return (
+              <tr key={t.id}>
+                <td>{t.titulo}</td>
+                <td>{exp?.codigo ?? '—'}</td>
+                <td>{Number(t.horas_previstas ?? 0).toFixed(2)}</td>
+                <td>{Number(t.horas_realizadas ?? 0).toFixed(2)}</td>
+                <td>{t.estado ?? '—'}</td>
+                <td>{t.prioridad ?? '—'}</td>
+                <td>{t.vencimiento ?? '—'}</td>
               </tr>
-            </thead>
-            <tbody>
-              {filtradas.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.titulo}</td>
-                  <td>
-                    {t.expedientes?.codigo ? (
-                      <a className="link" href={`/expedientes/${encodeURIComponent(t.expedientes.codigo)}`}>{t.expedientes.codigo}</a>
-                    ) : '—'}
-                  </td>
-                  <td>{t.estado ?? '—'}</td>
-                  <td>{t.prioridad ?? '—'}</td>
-                  <td>{t.vencimiento ?? '—'}</td>
-                  <td>{(t.horas_realizadas ?? 0).toFixed(2)} / {(t.horas_previstas ?? 0).toFixed(2)}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button
-                      className="icon-btn"
-                      aria-label="Editar"
-                      title="Editar"
-                      onClick={() =>
-                        setEdit({
-                          id: t.id,
-                          titulo: t.titulo,
-                          expediente_id: t.expediente_id,
-                          vencimiento: t.vencimiento,
-                          horas_previstas: t.horas_previstas,
-                          estado: (t.estado as any) ?? 'Pendiente',
-                          prioridad: (t.prioridad as any) ?? 'Media',
-                          descripcion: t.descripcion,
-                        })
-                      }
-                    >
-                      <span className="icon-emoji">✏️</span>
-                    </button>
-                    <button className="icon-btn" aria-label="Borrar" title="Borrar" onClick={() => handleDelete(t.id)}>
-                      <span className="icon-emoji">🗑️</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtradas.length === 0 && (
-                <tr><td colSpan={7} className="muted">Sin resultados</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <EditTareaModal
-        open={!!edit}
-        onClose={() => setEdit(null)}
-        tarea={edit}
-        expedientes={exps}
-        onSave={handleSave}
-      />
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>No hay tareas.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </main>
   );
 }
