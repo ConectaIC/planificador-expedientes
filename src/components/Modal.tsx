@@ -1,54 +1,86 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import { useEffect, useCallback, ReactNode } from 'react';
 
 export type ModalProps = {
   open: boolean;
   onClose: () => void;
   title?: string;
-  children: React.ReactNode;
+  children: ReactNode;
+  /** Clase tailwind para controlar el ancho máximo del cuadro de diálogo. Ej: "max-w-xl" */
+  widthClass?: string; // <- añadida para soportar casos como ExpedienteRowActions
 };
 
-export default function Modal({ open, onClose, title, children }: ModalProps) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  widthClass = 'max-w-lg', // tamaño por defecto
+}: ModalProps) {
+  const handleEsc = useCallback(
+    (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-    }
-    if (open) document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    },
+    [onClose]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener('keydown', handleEsc);
+    // bloquear scroll de fondo
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, handleEsc]);
 
   if (!open) return null;
 
   return (
     <div
-      className="modal-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        display: 'grid',
-        placeItems: 'center',
-        zIndex: 50,
+      onMouseDown={(e) => {
+        // cerrar al hacer click fuera del contenido
+        if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* Dialog */}
       <div
-        className="modal-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--cic-bg-card, #fff)',
-          color: 'var(--cic-text, #111)',
-          border: '1px solid var(--cic-border, #e5e5e5)',
-          borderRadius: 12,
-          padding: 16,
-          width: 'min(640px, 92vw)',
-          boxShadow: '0 10px 30px rgba(0,0,0,.1)',
-        }}
+        className={`relative w-[92vw] ${widthClass} bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200/50 dark:border-neutral-800 p-4 sm:p-6`}
       >
-        {title ? <h3 style={{ margin: '0 0 12px 0' }}>{title}</h3> : null}
+        {title ? (
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">{title}</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded-full px-2 py-1 text-xl leading-none hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <div className="mb-1 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded-full px-2 py-1 text-xl leading-none hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <div>{children}</div>
       </div>
     </div>
