@@ -5,6 +5,18 @@ import React, { useState } from 'react';
 import EditParteModal from '@/components/EditParteModal';
 import DeleteParteDialog from '@/components/DeleteParteDialog';
 
+// Parte por defecto para modo "crear"
+const EMPTY_PARTE = {
+  id: 0,                            // no se usará al crear
+  expediente_id: null as number | null,
+  tarea_id: null as number | null,
+  fecha: new Date().toISOString().slice(0, 10), // YYYY-MM-DD de hoy
+  hora_inicio: '08:00:00',          // respeta tu granularidad de 15'
+  hora_fin: '08:15:00',             // respeta tu granularidad de 15'
+  horas: null as number | null,     // si tienes trigger, puede ir null
+  comentario: '',
+};
+
 type ExpedienteRef = { id: number; codigo: string };
 type TareaRef = { id: number; titulo: string };
 
