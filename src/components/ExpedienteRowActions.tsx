@@ -6,7 +6,6 @@
 import { useState, useTransition } from 'react';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
-import { toast } from './toast'; // si no existe, sustituye por alert()
 
 type Expediente = {
   id: number;
@@ -38,12 +37,10 @@ export default function ExpedienteRowActions({ expediente, onUpdate, onDelete }:
     startTransition(async () => {
       try {
         await onUpdate(fd);
-        // @ts-ignore
-        toast ? toast.success('Expediente actualizado') : alert('Expediente actualizado');
+        alert('Expediente actualizado');
         setOpenEdit(false);
       } catch (err: any) {
-        // @ts-ignore
-        toast ? toast.error(err?.message || 'Error al actualizar') : alert(err?.message || 'Error al actualizar');
+        alert(err?.message || 'Error al actualizar');
       }
     });
   };
@@ -54,12 +51,10 @@ export default function ExpedienteRowActions({ expediente, onUpdate, onDelete }:
     startTransition(async () => {
       try {
         await onDelete(fd);
-        // @ts-ignore
-        toast ? toast.success('Expediente eliminado') : alert('Expediente eliminado');
+        alert('Expediente eliminado');
         setConfirm(false);
       } catch (err: any) {
-        // @ts-ignore
-        toast ? toast.error(err?.message || 'Error al eliminar') : alert(err?.message || 'Error al eliminar');
+        alert(err?.message || 'Error al eliminar');
       }
     });
   };
