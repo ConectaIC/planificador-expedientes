@@ -1,135 +1,135 @@
-// src/app/expedientes/actions.ts
 'use server';
 
-import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabaseServer';
 
-/* =========================================================
- * EXPEDIENTES
- * =======================================================*/
+// ---------- Tipos auxiliares ----------
+function toStr(v: FormDataEntryValue | null): string | null {
+  const s = (v ?? '').toString().trim();
+  return s.length ? s : null;
+}
+function toNum(v: FormDataEntryValue | null): number | null {
+  const s = (v ?? '').toString().trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function toDateStr(v: FormDataEntryValue | null): string | null {
+  const s = (v ?? '').toString().trim();
+  return s.length ? s : null; // esperamos 'YYYY-MM-DD'
+}
+
+// ========== EXPEDIENTES ==========
 
 // Crear expediente
 export async function createExpedienteAction(fd: FormData) {
-  const supabase = createClient(cookies());
+  const supabase = createClient(); // ✅ sin cookies()
 
   const payload = {
     codigo: String(fd.get('codigo') || '').trim(),
     proyecto: String(fd.get('proyecto') || '').trim(),
-    cliente: String(fd.get('cliente') || '').trim() || null,
-    inicio: String(fd.get('inicio') || '') || null,
-    fin: String(fd.get('fin') || '') || null,
-    prioridad: (String(fd.get('prioridad') || '') || null) as 'Baja' | 'Media' | 'Alta' | null,
-    estado: (String(fd.get('estado') || '') || null) as
-      | 'Pendiente'
-      | 'En curso'
-      | 'En supervisión'
-      | 'Entregado'
-      | 'Cerrado'
-      | null,
+    cliente: toStr(fd.get('cliente')),
+    inicio: toDateStr(fd.get('inicio')),
+    fin: toDateStr(fd.get('fin')),
+    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
+    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado' | null,
+    horas_previstas: toNum(fd.get('horas_previstas')),
+    horas_reales: toNum(fd.get('horas_reales')),
   };
 
   const { error } = await supabase.from('expedientes').insert(payload);
-  if (error) throw new Error(`No se pudo crear el expediente: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
   revalidatePath('/expedientes');
+  return { ok: true };
 }
 
 // Actualizar expediente
-export async function updateExpedienteAction(fd: FormData) {
-  const supabase = createClient(cookies());
-  const id = Number(fd.get('id'));
+export async function updateExpedienteAction(id: number, fd: FormData) {
+  const supabase = createClient();
 
-  const payload: Record<string, any> = {
+  const payload = {
     codigo: String(fd.get('codigo') || '').trim(),
     proyecto: String(fd.get('proyecto') || '').trim(),
-    cliente: String(fd.get('cliente') || '').trim() || null,
-    inicio: String(fd.get('inicio') || '') || null,
-    fin: String(fd.get('fin') || '') || null,
-    prioridad: String(fd.get('prioridad') || '') || null,
-    estado: String(fd.get('estado') || '') || null,
+    cliente: toStr(fd.get('cliente')),
+    inicio: toDateStr(fd.get('inicio')),
+    fin: toDateStr(fd.get('fin')),
+    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
+    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado' | null,
+    horas_previstas: toNum(fd.get('horas_previstas')),
+    horas_reales: toNum(fd.get('horas_reales')),
   };
 
   const { error } = await supabase.from('expedientes').update(payload).eq('id', id);
-  if (error) throw new Error(`No se pudo actualizar el expediente: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
   revalidatePath('/expedientes');
+  revalidatePath(`/expedientes/${encodeURIComponent(String(fd.get('codigo') || ''))}`);
+  return { ok: true };
 }
 
 // Borrar expediente
-export async function deleteExpedienteAction(fd: FormData) {
-  const supabase = createClient(cookies());
-  const id = Number(fd.get('id'));
+export async function deleteExpedienteAction(id: number) {
+  const supabase = createClient();
 
   const { error } = await supabase.from('expedientes').delete().eq('id', id);
-  if (error) throw new Error(`No se pudo borrar el expediente: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
   revalidatePath('/expedientes');
+  return { ok: true };
 }
 
-/* =========================================================
- * TAREAS (se mantienen aquí si ya las usas desde la página
- *         de detalle del expediente)
- * =======================================================*/
+// ========== TAREAS (vinculadas a expediente) ==========
 
 // Crear tarea
-export async function createTaskAction(fd: FormData) {
-  const supabase = createClient(cookies());
+export async function createTaskAction(expedienteId: number, fd: FormData) {
+  const supabase = createClient();
 
-  const expediente_id = Number(fd.get('expediente_id'));
-  const expediente_codigo = String(fd.get('expediente_codigo') || '');
   const payload = {
-    expediente_id,
+    expediente_id: expedienteId,
     titulo: String(fd.get('titulo') || '').trim(),
-    horas_previstas: Number(fd.get('horas_previstas') || 0) || null,
-    estado: (String(fd.get('estado') || '') || null) as any,
-    prioridad: (String(fd.get('prioridad') || '') || null) as any,
-    vencimiento: String(fd.get('vencimiento') || '') || null,
+    horas_previstas: toNum(fd.get('horas_previstas')),
+    horas_realizadas: toNum(fd.get('horas_realizadas')),
+    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'Completada' | null,
+    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
+    vencimiento: toDateStr(fd.get('vencimiento')),
   };
 
   const { error } = await supabase.from('tareas').insert(payload);
-  if (error) throw new Error(`No se pudo crear la tarea: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
-  revalidatePath('/expedientes');
-  if (expediente_codigo) {
-    revalidatePath(`/expedientes/${encodeURIComponent(expediente_codigo)}`);
-  }
+  revalidatePath(`/expedientes/${encodeURIComponent(String(fd.get('expediente_codigo') || ''))}`);
+  revalidatePath('/tareas');
+  return { ok: true };
 }
 
 // Actualizar tarea
-export async function updateTaskAction(fd: FormData) {
-  const supabase = createClient(cookies());
-  const id = Number(fd.get('id'));
-  const expediente_codigo = String(fd.get('expediente_codigo') || '');
+export async function updateTaskAction(id: number, fd: FormData) {
+  const supabase = createClient();
 
-  const payload: Record<string, any> = {
+  const payload = {
     titulo: String(fd.get('titulo') || '').trim(),
-    horas_previstas: Number(fd.get('horas_previstas') || 0) || null,
-    estado: String(fd.get('estado') || '') || null,
-    prioridad: String(fd.get('prioridad') || '') || null,
-    vencimiento: String(fd.get('vencimiento') || '') || null,
+    horas_previstas: toNum(fd.get('horas_previstas')),
+    horas_realizadas: toNum(fd.get('horas_realizadas')),
+    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'Completada' | null,
+    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
+    vencimiento: toDateStr(fd.get('vencimiento')),
   };
 
   const { error } = await supabase.from('tareas').update(payload).eq('id', id);
-  if (error) throw new Error(`No se pudo actualizar la tarea: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
-  revalidatePath('/expedientes');
-  if (expediente_codigo) {
-    revalidatePath(`/expedientes/${encodeURIComponent(expediente_codigo)}`);
-  }
+  revalidatePath('/tareas');
+  return { ok: true };
 }
 
 // Borrar tarea
-export async function deleteTaskAction(fd: FormData) {
-  const supabase = createClient(cookies());
-  const id = Number(fd.get('id'));
-  const expediente_codigo = String(fd.get('expediente_codigo') || '');
+export async function deleteTaskAction(id: number) {
+  const supabase = createClient();
 
   const { error } = await supabase.from('tareas').delete().eq('id', id);
-  if (error) throw new Error(`No se pudo borrar la tarea: ${error.message}`);
+  if (error) return { ok: false, error: error.message };
 
-  revalidatePath('/expedientes');
-  if (expediente_codigo) {
-    revalidatePath(`/expedientes/${encodeURIComponent(expediente_codigo)}`);
-  }
+  revalidatePath('/tareas');
+  return { ok: true };
 }
