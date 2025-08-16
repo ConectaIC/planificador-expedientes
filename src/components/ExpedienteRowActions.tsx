@@ -1,96 +1,83 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import Modal from '@/components/Modal';
+import { updateExpedienteAction, deleteExpedienteAction } from '@/app/expedientes/actions';
 
 export type Expediente = {
   id: number;
   codigo: string;
-  cliente?: string | null;
-  proyecto?: string | null;
+  proyecto: string | null;
+  cliente: string | null;
+  prioridad: string | null;
+  estado: string | null;
+  fin: string | null;
 };
 
 type Props = {
   expediente: Expediente;
-  /** Opcional: callback para guardar edición */
-  onUpdate?: (form: FormData) => Promise<void> | void;
-  /** Opcional: callback para borrar */
-  onDelete?: (id: number) => Promise<void> | void;
+  onUpdate?: () => void;
+  onDelete?: () => void;
 };
 
-export default function ExpedienteRowActions({
-  expediente,
-  onUpdate,
-  onDelete,
-}: Props) {
+export default function ExpedienteRowActions({ expediente, onUpdate, onDelete }: Props) {
   const [openEdit, setOpenEdit] = useState(false);
-  const [openDelete, setOpenDelete] = useState(false);
+  const [openDel, setOpenDel] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submitEdit(e: React.FormEvent<HTMLFormElement>) {
+  const submitEdit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!onUpdate) {
-      // Sin callback: solo cerrar para no romper build
-      setOpenEdit(false);
-      return;
-    }
+    const fd = new FormData(e.currentTarget);
+    setBusy(true);
+    setErr(null);
     try {
-      setBusy(true);
-      setErr(null);
-      const fd = new FormData(e.currentTarget);
-      await onUpdate(fd);
+      await updateExpedienteAction(fd);
       setOpenEdit(false);
-    } catch (error: any) {
-      setErr(error?.message ?? 'Error al guardar');
+      onUpdate?.();
+    } catch (ex: any) {
+      setErr(ex?.message ?? 'Error al guardar');
     } finally {
       setBusy(false);
     }
-  }
+  };
 
-  async function confirmDelete() {
-    if (!onDelete) {
-      // Sin callback: solo cerrar para no romper build
-      setOpenDelete(false);
-      return;
-    }
+  const confirmDelete = async () => {
+    setBusy(true);
+    setErr(null);
     try {
-      setBusy(true);
-      setErr(null);
-      await onDelete(expediente.id);
-      setOpenDelete(false);
-    } catch (error: any) {
-      setErr(error?.message ?? 'Error al borrar');
+      const fd = new FormData();
+      fd.set('id', String(expediente.id));
+      await deleteExpedienteAction(fd);
+      setOpenDel(false);
+      onDelete?.();
+    } catch (ex: any) {
+      setErr(ex?.message ?? 'Error al borrar');
     } finally {
       setBusy(false);
     }
-  }
+  };
 
   return (
-    <div className="flex items-center justify-center gap-2">
-      {/* Editar */}
+    <div className="flex items-center gap-2 justify-center">
       <button
         type="button"
-        className="px-2 py-1 rounded hover:bg-gray-100"
+        className="rounded-md border px-2 py-1 hover:bg-gray-50"
         title="Editar"
-        aria-label="Editar"
         onClick={() => setOpenEdit(true)}
       >
         ✏️
       </button>
-
-      {/* Borrar */}
       <button
         type="button"
-        className="px-2 py-1 rounded hover:bg-gray-100"
+        className="rounded-md border px-2 py-1 hover:bg-gray-50"
         title="Borrar"
-        aria-label="Borrar"
-        onClick={() => setOpenDelete(true)}
+        onClick={() => setOpenDel(true)}
       >
         🗑️
       </button>
 
-      {/* Modal edición */}
+      {/* Editar */}
       <Modal
         open={openEdit}
         onClose={() => setOpenEdit(false)}
@@ -99,51 +86,69 @@ export default function ExpedienteRowActions({
       >
         <form onSubmit={submitEdit} className="space-y-3">
           <input type="hidden" name="id" value={expediente.id} />
-          <div>
-            <label className="block text-sm font-medium mb-1">Código</label>
-            <input
-              name="codigo"
-              defaultValue={expediente.codigo}
-              className="w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Cliente</label>
-            <input
-              name="cliente"
-              defaultValue={expediente.cliente ?? ''}
-              className="w-full border rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Proyecto</label>
-            <input
-              name="proyecto"
-              defaultValue={expediente.proyecto ?? ''}
-              className="w-full border rounded px-3 py-2"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm">Código</span>
+              <input
+                name="codigo"
+                defaultValue={expediente.codigo}
+                className="rounded-md border px-3 py-2"
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm">Cliente</span>
+              <input
+                name="cliente"
+                defaultValue={expediente.cliente ?? ''}
+                className="rounded-md border px-3 py-2"
+              />
+            </label>
+            <label className="md:col-span-2 flex flex-col gap-1">
+              <span className="text-sm">Proyecto</span>
+              <input
+                name="proyecto"
+                defaultValue={expediente.proyecto ?? ''}
+                className="rounded-md border px-3 py-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm">Prioridad</span>
+              <input
+                name="prioridad"
+                defaultValue={expediente.prioridad ?? ''}
+                className="rounded-md border px-3 py-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm">Estado</span>
+              <input
+                name="estado"
+                defaultValue={expediente.estado ?? ''}
+                className="rounded-md border px-3 py-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm">Fin (AAAA-MM-DD)</span>
+              <input
+                name="fin"
+                defaultValue={expediente.fin ?? ''}
+                placeholder="2025-12-31"
+                className="rounded-md border px-3 py-2"
+              />
+            </label>
           </div>
 
-          {err && (
-            <p className="text-sm text-red-600" role="alert">
-              {err}
-            </p>
-          )}
+          {err && <p className="text-sm text-red-600">{err}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setOpenEdit(false)}
-              className="px-3 py-2 rounded border"
-              disabled={busy}
-            >
+            <button type="button" onClick={() => setOpenEdit(false)} className="rounded-md border px-3 py-2">
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-3 py-2 rounded bg-emerald-600 text-white"
               disabled={busy}
+              className="rounded-md bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>
@@ -151,43 +156,26 @@ export default function ExpedienteRowActions({
         </form>
       </Modal>
 
-      {/* Modal borrar */}
+      {/* Borrar */}
       <Modal
-        open={openDelete}
-        onClose={() => setOpenDelete(false)}
+        open={openDel}
+        onClose={() => setOpenDel(false)}
         title={`Borrar ${expediente.codigo}`}
-        widthClass="max-w-md"
       >
-        <div className="space-y-4">
-          <p>
-            ¿Seguro que quieres borrar el expediente{' '}
-            <strong>{expediente.codigo}</strong>?
-          </p>
-
-          {err && (
-            <p className="text-sm text-red-600" role="alert">
-              {err}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setOpenDelete(false)}
-              className="px-3 py-2 rounded border"
-              disabled={busy}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={confirmDelete}
-              className="px-3 py-2 rounded bg-red-600 text-white"
-              disabled={busy}
-            >
-              {busy ? 'Borrando…' : 'Borrar'}
-            </button>
-          </div>
+        <p className="mb-3">¿Seguro que quieres borrar este expediente? Esta acción no se puede deshacer.</p>
+        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setOpenDel(false)} className="rounded-md border px-3 py-2">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={confirmDelete}
+            className="rounded-md bg-red-600 px-3 py-2 text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy ? 'Borrando…' : 'Borrar'}
+          </button>
         </div>
       </Modal>
     </div>
