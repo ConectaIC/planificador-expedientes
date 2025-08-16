@@ -1,216 +1,112 @@
-// src/app/expedientes/[codigo]/page.tsx
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabaseServer";
+import { createClient } from '@/lib/supabaseServer';
+import Link from 'next/link';
 
-// ---- Tipos base según tu esquema ----
-type Prioridad = "Baja" | "Media" | "Alta";
-type EstadoExp =
-  | "Pendiente"
-  | "En curso"
-  | "En supervisión"
-  | "Entregado"
-  | "Cerrado";
-type EstadoTarea = "Pendiente" | "En curso" | "Completada";
-
-interface Expediente {
+type Expediente = {
   id: number;
   codigo: string;
-  proyecto: string | null;
-  cliente: string | null;
-  inicio: string | null; // date
-  fin: string | null; // date
-  prioridad: Prioridad | null;
-  estado: EstadoExp | null;
+  proyecto: string;
+  cliente: string;
+  prioridad: string | null;
+  estado: string | null;
+  inicio: string | null;
+  fin: string | null;
   horas_previstas: number | null;
   horas_reales: number | null;
-}
+};
 
-interface Tarea {
+type Tarea = {
   id: number;
   expediente_id: number;
   titulo: string;
   horas_previstas: number | null;
   horas_realizadas: number | null;
-  estado: EstadoTarea;
-  prioridad: Prioridad | null;
-  vencimiento: string | null; // date
-}
+  estado: string | null;
+  prioridad: string | null;
+  vencimiento: string | null;
+};
 
-// ---- Carga de datos (SSR) ----
-async function fetchExpedienteYtareas(codigo: string) {
+export default async function Page({ params }: { params: { codigo: string } }) {
   const supabase = createClient();
 
-  // 1) Expediente por código
-  const { data: expData, error: e1 } = await supabase
-    .from("expedientes")
-    .select(
-      "id, codigo, proyecto, cliente, inicio, fin, prioridad, estado, horas_previstas, horas_reales"
-    )
-    .eq("codigo", codigo)
+  const { data: exp, error: e1 } = await supabase
+    .from('expedientes')
+    .select('*')
+    .eq('codigo', decodeURIComponent(params.codigo))
     .maybeSingle();
 
   if (e1) {
-    throw new Error(`Error al cargar expediente: ${e1.message}`);
+    return <div className="card"><p style={{ color: 'crimson' }}>Error al cargar expediente: {e1.message}</p></div>;
   }
-  if (!expData) {
-    // No existe ese código
-    return { expediente: null as unknown as Expediente, tareas: [] as Tarea[] };
+  if (!exp) {
+    return <div className="card"><p>No existe el expediente “{decodeURIComponent(params.codigo)}”.</p></div>;
   }
 
-  // Tipamos el expediente explícitamente para evitar 'unknown'
-  const expediente = expData as Expediente;
+  const expediente = exp as Expediente;
 
-  // 2) Tareas del expediente
-  const { data: tareasData, error: e2 } = await supabase
-    .from("tareas")
-    .select(
-      "id, expediente_id, titulo, horas_previstas, horas_realizadas, estado, prioridad, vencimiento"
-    )
-    // 👇 fuerza el tipo numérico para que TS no marque 'unknown'
-    .eq("expediente_id", Number(expediente.id))
-    .order("vencimiento", { ascending: true });
+  const { data: tareas, error: e2 } = await supabase
+    .from('tareas')
+    .select('id, expediente_id, titulo, horas_previstas, horas_realizadas, estado, prioridad, vencimiento')
+    .eq('expediente_id', expediente.id)
+    .order('vencimiento', { ascending: true, nullsFirst: true });
 
   if (e2) {
-    throw new Error(`Error al cargar tareas: ${e2.message}`);
+    return <div className="card"><p style={{ color: 'crimson' }}>Error al cargar tareas: {e2.message}</p></div>;
   }
 
-  const tareas = (tareasData || []) as Tarea[];
-  return { expediente, tareas };
-}
+  const lista = (tareas || []) as Tarea[];
 
-// ---- Page (Server Component) ----
-export default async function ExpedienteDetallePage({
-  params,
-}: {
-  params: { codigo: string };
-}) {
-  const codigo = decodeURIComponent(params.codigo);
-  const { expediente, tareas } = await fetchExpedienteYtareas(codigo);
-
-  if (!expediente || !expediente.id) {
-    notFound();
-  }
-
-  const fmtNum = (n: number | null | undefined) =>
-    Number.isFinite(Number(n)) ? Number(n).toFixed(2) : "—";
-  const fmtDate = (d: string | null) =>
-    d ? new Date(d).toLocaleDateString() : "—";
+  const fmt = (n: number | null | undefined) => (Number.isFinite(Number(n)) ? Number(n).toFixed(1) : '—');
 
   return (
-    <main className="container">
-      <div
-        className="card"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <h2>
-          Expediente · <span style={{ fontWeight: 600 }}>{codigo}</span>
-        </h2>
-
-        {/* Si tienes un modal cliente para crear tareas, puedes importarlo aquí */}
-        {/* <NewTareaModal expedienteId={expediente.id} /> */}
-        <Link href="/expedientes" className="btn-link">
-          ⟵ Volver
-        </Link>
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3>Información</h3>
-        <div className="responsive-grid-2">
-          <div>
-            <div>
-              <strong>Proyecto:</strong> {expediente.proyecto ?? "—"}
-            </div>
-            <div>
-              <strong>Cliente:</strong> {expediente.cliente ?? "—"}
-            </div>
-            <div>
-              <strong>Inicio:</strong> {fmtDate(expediente.inicio)}
-            </div>
-            <div>
-              <strong>Fin:</strong> {fmtDate(expediente.fin)}
-            </div>
+    <>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-toolbar" style={{ justifyContent: 'space-between' }}>
+          <h2 className="card-title">Expediente · {expediente.codigo}</h2>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Link href="/expedientes" className="btn-ghost">← Volver</Link>
+            <Link href={`/expedientes/${encodeURIComponent(expediente.codigo)}?nuevaTarea=1`} className="icon-btn" aria-label="Nueva tarea" title="Nueva tarea">➕</Link>
           </div>
-          <div>
-            <div>
-              <strong>Prioridad:</strong> {expediente.prioridad ?? "—"}
-            </div>
-            <div>
-              <strong>Estado:</strong> {expediente.estado ?? "—"}
-            </div>
-            <div>
-              <strong>Horas previstas:</strong> {fmtNum(expediente.horas_previstas ?? 0)}
-            </div>
-            <div>
-              <strong>Horas reales:</strong> {fmtNum(expediente.horas_reales ?? 0)}
-            </div>
-          </div>
+        </div>
+        <div style={{ color: '#475569' }}>
+          <div><strong>Proyecto:</strong> {expediente.proyecto} · <strong>Cliente:</strong> {expediente.cliente}</div>
+          <div><strong>Estado:</strong> {expediente.estado ?? '—'} · <strong>Prioridad:</strong> {expediente.prioridad ?? '—'}</div>
+          <div><strong>Horas:</strong> {fmt(expediente.horas_previstas)} / <strong>{fmt(expediente.horas_reales)}</strong></div>
         </div>
       </div>
 
       <div className="card">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 8,
-          }}
-        >
-          <h3>Tareas vinculadas</h3>
-
-          {/* Si tienes botón/modal cliente de “+ Nueva tarea”: */}
-          {/* <NewTareaModal expedienteId={expediente.id} /> */}
-        </div>
-
-        <div className="table-wrapper">
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ width: "32px" }}>#</th>
-                <th>Título</th>
-                <th>Estado</th>
-                <th>Prioridad</th>
-                <th>Vencimiento</th>
-                <th>Horas prev.</th>
-                <th>Horas real.</th>
-                <th style={{ textAlign: "center", width: 90 }}>Acciones</th>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Vencimiento</th>
+              <th>Estado</th>
+              <th>Prioridad</th>
+              <th>Horas (Prev/Real)</th>
+              <th style={{ textAlign: 'center', width: 90 }}>⋯</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((t) => (
+              <tr key={t.id}>
+                <td>{t.titulo}</td>
+                <td>{t.vencimiento ?? '—'}</td>
+                <td>{t.estado ?? '—'}</td>
+                <td>{t.prioridad ?? '—'}</td>
+                <td>{fmt(t.horas_previstas)} / <strong>{fmt(t.horas_realizadas)}</strong></td>
+                <td style={{ textAlign: 'center' }}>
+                  {/* Aquí puedes usar tu componente cliente de acciones de tareas si ya existe */}
+                  <Link className="icon-btn" href={`/tareas?edit=${t.id}`} title="Editar">✏️</Link>{' '}
+                  <Link className="icon-btn" href={`/tareas?del=${t.id}`} title="Borrar">🗑️</Link>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {tareas.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: 16 }}>
-                    No hay tareas vinculadas todavía.
-                  </td>
-                </tr>
-              ) : (
-                tareas.map((t, idx) => (
-                  <tr key={t.id}>
-                    <td>{idx + 1}</td>
-                    <td>{t.titulo}</td>
-                    <td>{t.estado}</td>
-                    <td>{t.prioridad ?? "—"}</td>
-                    <td>{fmtDate(t.vencimiento)}</td>
-                    <td>{fmtNum(t.horas_previstas ?? 0)}</td>
-                    <td>{fmtNum(t.horas_realizadas ?? 0)}</td>
-                    <td style={{ textAlign: "center" }}>
-                      {/* Sustituye por tus modales cliente si ya existen */}
-                      {/* <EditTareaModal tarea={t} /> */}
-                      {/* <DeleteTareaDialog id={t.id} /> */}
-                      <span style={{ opacity: 0.5 }}>✏️ 🗑️</span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+            {lista.length === 0 && (
+              <tr><td colSpan={6} style={{ color: '#64748b', textAlign: 'center', padding: 18 }}>No hay tareas</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
-    </main>
+    </>
   );
 }
