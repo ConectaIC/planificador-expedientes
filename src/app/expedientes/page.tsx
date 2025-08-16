@@ -1,222 +1,287 @@
-// src/app/expedientes/page.tsx
-// Tipo: Server Component
-
-'use client';
-
-import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import NewExpedienteModal, { ExpedienteInput } from '@/components/NewExpedienteModal';
-
-type Prioridad = 'Baja' | 'Media' | 'Alta';
-type EstadoExp = 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado';
+import Link from 'next/link';
+import ExpedienteModal from '@/components/ExpedienteModal';
+import Modal from '@/components/Modal'; // para confirmación simple
+import React from 'react';
 
 type Expediente = {
   id: number;
   codigo: string;
   proyecto: string;
   cliente: string;
-  inicio: string | null;
-  fin: string | null;
-  prioridad: Prioridad | null;
-  estado: EstadoExp | null;
-  horas_previstas: number | null;
-  horas_reales: number | null;
+  inicio?: string | null;
+  fin?: string | null;
+  prioridad?: 'Baja' | 'Media' | 'Alta';
+  estado?: 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado';
+  horas_previstas?: number | null;
+  horas_reales?: number | null;
 };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false },
+  });
+}
 
-export default function ExpedientesPage() {
-  // datos
-  const [rows, setRows] = useState<Expediente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+async function fetchExpedientes(q?: string, estado?: string, prioridad?: string, orderBy?: string) {
+  const supa = getAdmin();
+  let query = supa.from('expedientes').select('*');
+  if (q && q.trim()) {
+    query = query.or(`codigo.ilike.%${q}%,proyecto.ilike.%${q}%,cliente.ilike.%${q}%`);
+  }
+  if (estado && estado !== 'Todos') query = query.eq('estado', estado);
+  if (prioridad && prioridad !== 'Todas') query = query.eq('prioridad', prioridad);
 
-  // filtros
-  const [q, setQ] = useState('');
-  const [estado, setEstado] = useState<'todos' | EstadoExp>('todos');
-  const [prioridad, setPrioridad] = useState<'todas' | Prioridad>('todas');
-  const [orden, setOrden] = useState<'fin_asc' | 'fin_desc' | 'codigo_asc' | 'codigo_desc' | 'horas_asc' | 'horas_desc'>('fin_asc');
-
-  // modal crear
-  const [openNew, setOpenNew] = useState(false);
-
-  async function fetchData() {
-    try {
-      setLoading(true);
-      setErr(null);
-      const { data, error } = await supabase
-        .from('expedientes')
-        .select('id,codigo,proyecto,cliente,inicio,fin,prioridad,estado,horas_previstas,horas_reales')
-        .order('fin', { ascending: true });
-      if (error) throw error;
-      setRows((data as any) ?? []);
-    } catch (e: any) {
-      setErr(e?.message ?? 'No se pudieron cargar los expedientes');
-    } finally {
-      setLoading(false);
-    }
+  // orden
+  switch (orderBy) {
+    case 'fecha':
+      query = query.order('inicio', { ascending: false, nullsFirst: false });
+      break;
+    case 'horas':
+      query = query.order('horas_reales', { ascending: false, nullsFirst: true });
+      break;
+    default:
+      query = query.order('codigo', { ascending: true });
   }
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const { data, error } = await query;
+  if (error) throw new Error(`Error al cargar expedientes: ${error.message}`);
+  return (data ?? []) as Expediente[];
+}
 
-  const filtrados = useMemo(() => {
-    let list = rows.slice();
-    const qnorm = q.trim().toLowerCase();
-    if (qnorm) {
-      list = list.filter(
-        (r) =>
-          r.codigo?.toLowerCase().includes(qnorm) ||
-          r.proyecto?.toLowerCase().includes(qnorm) ||
-          r.cliente?.toLowerCase().includes(qnorm)
-      );
-    }
-    if (estado !== 'todos') list = list.filter((r) => r.estado === estado);
-    if (prioridad !== 'todas') list = list.filter((r) => r.prioridad === prioridad);
+// Server Actions
+export async function createExpedienteAction(form: FormData) {
+  'use server';
+  const supa = getAdmin();
+  const payload = {
+    codigo: String(form.get('codigo') ?? ''),
+    proyecto: String(form.get('proyecto') ?? ''),
+    cliente: String(form.get('cliente') ?? ''),
+    inicio: String(form.get('inicio') ?? '') || null,
+    fin: String(form.get('fin') ?? '') || null,
+    prioridad: String(form.get('prioridad') ?? 'Media'),
+    estado: String(form.get('estado') ?? 'Pendiente'),
+  };
+  const { error } = await supa.from('expedientes').insert(payload);
+  if (error) throw new Error(error.message);
+}
 
-    switch (orden) {
-      case 'fin_desc':
-        list.sort((a, b) => (b.fin || '').localeCompare(a.fin || ''));
-        break;
-      case 'codigo_asc':
-        list.sort((a, b) => a.codigo.localeCompare(b.codigo));
-        break;
-      case 'codigo_desc':
-        list.sort((a, b) => b.codigo.localeCompare(a.codigo));
-        break;
-      case 'horas_asc':
-        list.sort(
-          (a, b) => (a.horas_reales ?? 0) - (b.horas_reales ?? 0)
-        );
-        break;
-      case 'horas_desc':
-        list.sort(
-          (a, b) => (b.horas_reales ?? 0) - (a.horas_reales ?? 0)
-        );
-        break;
-      default: // fin_asc
-        list.sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
-    }
-    return list;
-  }, [rows, q, estado, prioridad, orden]);
+export async function updateExpedienteAction(form: FormData) {
+  'use server';
+  const supa = getAdmin();
+  const id = Number(form.get('id'));
+  const payload = {
+    codigo: String(form.get('codigo') ?? ''),
+    proyecto: String(form.get('proyecto') ?? ''),
+    cliente: String(form.get('cliente') ?? ''),
+    inicio: String(form.get('inicio') ?? '') || null,
+    fin: String(form.get('fin') ?? '') || null,
+    prioridad: String(form.get('prioridad') ?? 'Media'),
+    estado: String(form.get('estado') ?? 'Pendiente'),
+  };
+  const { error } = await supa.from('expedientes').update(payload).eq('id', id);
+  if (error) throw new Error(error.message);
+}
 
-  async function handleCreate(payload: ExpedienteInput) {
-    const { error } = await supabase.from('expedientes').insert({
-      codigo: payload.codigo,
-      proyecto: payload.proyecto,
-      cliente: payload.cliente,
-      inicio: payload.inicio || null,
-      fin: payload.fin || null,
-      prioridad: payload.prioridad || null,
-      estado: payload.estado || null,
-    });
-    if (error) throw error;
-    await fetchData();
-  }
+export async function deleteExpedienteAction(form: FormData) {
+  'use server';
+  const supa = getAdmin();
+  const id = Number(form.get('id'));
+  // Nota: si hay FK en tareas/partes, Supabase debe tener ON DELETE o manejamos previo borrado de dependientes.
+  const { error } = await supa.from('expedientes').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
 
-  async function handleDelete(id: number) {
-    if (!confirm('¿Borrar expediente y sus relaciones?')) return;
-    const { error } = await supabase.from('expedientes').delete().eq('id', id);
-    if (error) alert(error.message);
-    await fetchData();
-  }
+export default async function Page({ searchParams }: { searchParams: any }) {
+  const q = searchParams?.q ?? '';
+  const estado = searchParams?.estado ?? 'Todos';
+  const prioridad = searchParams?.prioridad ?? 'Todas';
+  const orderBy = searchParams?.orden ?? 'codigo';
 
+  const expedientes = await fetchExpedientes(q, estado, prioridad, orderBy);
+
+  // Estados de modal (con Server Components, los controlan Client Components)
+  // Renderizamos contenedores "slots" y dejamos la UI al cliente.
   return (
     <main className="container">
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <h1>Expedientes</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="icon-btn" aria-label="Nuevo expediente" title="Nuevo expediente" onClick={() => setOpenNew(true)}>
-            <span className="icon-emoji">➕</span>
-          </button>
-        </div>
+      <div className="toolbar">
+        <form method="get" className="filters">
+          <input name="q" placeholder="Buscar por código, proyecto o cliente" defaultValue={q} className="input" />
+          <select name="estado" defaultValue={estado} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option>Todos</option>
+            <option>Pendiente</option>
+            <option>En curso</option>
+            <option>En supervisión</option>
+            <option>Entregado</option>
+            <option>Cerrado</option>
+          </select>
+          <select name="prioridad" defaultValue={prioridad} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option>Todas</option>
+            <option>Baja</option>
+            <option>Media</option>
+            <option>Alta</option>
+          </select>
+          <select name="orden" defaultValue={orderBy} className="input" onChange={(e)=> e.currentTarget.form?.submit()}>
+            <option value="codigo">Ordenar: Código</option>
+            <option value="fecha">Ordenar: Fecha inicio</option>
+            <option value="horas">Ordenar: Horas imputadas</option>
+          </select>
+        </form>
+        {/* Botón ➕ abre modal de nuevo */}
+        <CreateExpedienteButton />
       </div>
 
-      <div className="filters">
-        <input className="inp" placeholder="Buscar por código, proyecto o cliente" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="inp" value={estado} onChange={(e) => setEstado(e.target.value as any)}>
-          <option value="todos">Estado: todos</option>
-          <option value="Pendiente">Pendiente</option>
-          <option value="En curso">En curso</option>
-          <option value="En supervisión">En supervisión</option>
-          <option value="Entregado">Entregado</option>
-          <option value="Cerrado">Cerrado</option>
-        </select>
-        <select className="inp" value={prioridad} onChange={(e) => setPrioridad(e.target.value as any)}>
-          <option value="todas">Prioridad: todas</option>
-          <option value="Baja">Baja</option>
-          <option value="Media">Media</option>
-          <option value="Alta">Alta</option>
-        </select>
-        <select className="inp" value={orden} onChange={(e) => setOrden(e.target.value as any)}>
-          <option value="fin_asc">Orden: Fin ↑</option>
-          <option value="fin_desc">Orden: Fin ↓</option>
-          <option value="codigo_asc">Orden: Código ↑</option>
-          <option value="codigo_desc">Orden: Código ↓</option>
-          <option value="horas_asc">Orden: Horas ↑</option>
-          <option value="horas_desc">Orden: Horas ↓</option>
-        </select>
-      </div>
-
-      {err && <div className="alert error">Error al cargar expedientes: {err}</div>}
-      {loading ? (
-        <div className="muted">Cargando…</div>
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Proyecto</th>
-                <th>Cliente</th>
-                <th>Inicio</th>
-                <th>Fin</th>
-                <th>Prioridad</th>
-                <th>Estado</th>
-                <th>Horas (reales)</th>
-                <th style={{ width: 90, textAlign: 'center' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <a className="link" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>{e.codigo}</a>
-                  </td>
-                  <td>{e.proyecto}</td>
-                  <td>{e.cliente}</td>
-                  <td>{e.inicio ?? '—'}</td>
-                  <td>{e.fin ?? '—'}</td>
-                  <td>{e.prioridad ?? '—'}</td>
-                  <td>{e.estado ?? '—'}</td>
-                  <td>{(e.horas_reales ?? 0).toFixed(2)}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <a className="icon-btn" aria-label="Editar" title="Editar" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>
-                      <span className="icon-emoji">✏️</span>
-                    </a>
-                    <button className="icon-btn" aria-label="Borrar" title="Borrar" onClick={() => handleDelete(e.id)}>
-                      <span className="icon-emoji">🗑️</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <tr><td colSpan={9} className="muted">Sin resultados</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <NewExpedienteModal
-        open={openNew}
-        onClose={() => setOpenNew(false)}
-        onCreate={handleCreate}
-      />
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Proyecto</th>
+            <th>Cliente</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Prioridad</th>
+            <th>Estado</th>
+            <th>Horas prev.</th>
+            <th>Horas reales</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {expedientes.map((e) => (
+            <tr key={e.id}>
+              <td>
+                <Link href={`/expedientes/${encodeURIComponent(e.codigo)}`} className="btn-link">
+                  {e.codigo}
+                </Link>
+              </td>
+              <td>{e.proyecto || '—'}</td>
+              <td>{e.cliente || '—'}</td>
+              <td>{e.inicio || '—'}</td>
+              <td>{e.fin || '—'}</td>
+              <td>{e.prioridad || '—'}</td>
+              <td>{e.estado || '—'}</td>
+              <td>{Number(e.horas_previstas ?? 0).toFixed(2)}</td>
+              <td>{Number(e.horas_reales ?? 0).toFixed(2)}</td>
+              <td>
+                <span style={{ display: 'inline-flex', gap: 6 }}>
+                  <EditExpedienteButton expediente={e} />
+                  <DeleteExpedienteButton id={e.id} />
+                </span>
+              </td>
+            </tr>
+          ))}
+          {expedientes.length === 0 && (
+            <tr>
+              <td colSpan={10} style={{ textAlign: 'center', padding: 16 }}>No hay expedientes.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </main>
+  );
+}
+
+/** Client wrappers para abrir modales con server actions */
+function CreateExpedienteButton() {
+  return (
+    <ClientCreateExpediente action={createExpedienteAction} />
+  );
+}
+function EditExpedienteButton({ expediente }: { expediente: any }) {
+  return (
+    <ClientEditExpediente expediente={expediente} action={updateExpedienteAction} />
+  );
+}
+function DeleteExpedienteButton({ id }: { id: number }) {
+  return (
+    <ClientDeleteExpediente id={id} action={deleteExpedienteAction} />
+  );
+}
+
+/* ---------- Sección client-only: control de modales ---------- */
+function ClientBoundary({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
+'use client';
+import { useState } from 'react';
+
+function ClientCreateExpediente({ action }: { action: (form: FormData) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  return (
+    <>
+      <button aria-label="Nuevo expediente" className="icon-btn" onClick={() => setOpen(true)}>➕</button>
+      <ExpedienteModal
+        open={open}
+        onClose={() => setOpen(false)}
+        initial={null}
+        title="Nuevo expediente"
+        submitting={submitting}
+        onSubmit={async (fd) => {
+          setSubmitting(true);
+          try { await action(fd); } finally { setSubmitting(false); }
+        }}
+      />
+    </>
+  );
+}
+
+function ClientEditExpediente({
+  expediente,
+  action,
+}: {
+  expediente: any;
+  action: (form: FormData) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  return (
+    <>
+      <button aria-label="Editar expediente" className="icon-btn" onClick={() => setOpen(true)}>✏️</button>
+      <ExpedienteModal
+        open={open}
+        onClose={() => setOpen(false)}
+        initial={expediente}
+        title="Editar expediente"
+        submitting={submitting}
+        onSubmit={async (fd) => {
+          fd.set('id', String(expediente.id));
+          setSubmitting(true);
+          try { await action(fd); } finally { setSubmitting(false); }
+        }}
+      />
+    </>
+  );
+}
+
+function ClientDeleteExpediente({
+  id,
+  action,
+}: {
+  id: number;
+  action: (form: FormData) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  return (
+    <>
+      <button aria-label="Borrar expediente" className="icon-btn" onClick={() => setOpen(true)}>🗑️</button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Confirmar borrado">
+        <p>¿Seguro que deseas borrar este expediente?</p>
+        <form
+          action={async (fd) => {
+            fd.set('id', String(id));
+            setSubmitting(true);
+            try { await action(fd); } finally { setSubmitting(false); }
+          }}
+          style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}
+        >
+          <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>✖️</button>
+          <button type="submit" className="btn-danger" disabled={submitting}>{submitting ? '…' : '🗑️'}</button>
+        </form>
+      </Modal>
+    </>
   );
 }
