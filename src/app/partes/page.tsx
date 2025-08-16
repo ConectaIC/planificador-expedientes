@@ -37,6 +37,7 @@ export default async function Page({
 
   const sb = supabaseAdmin();
 
+  // Datos para modal de creación
   const [{ data: exps }, { data: ts }] = await Promise.all([
     sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true }),
     sb.from('tareas').select('id,titulo,expediente_id').order('id', { ascending: true }),
@@ -66,6 +67,7 @@ export default async function Page({
     );
   }
 
+  // Normalización de relaciones
   const partes: ParteRow[] = (data || []).map((p: any) => {
     const exp = firstOrNull<any>(p.expedientes);
     const tarea = firstOrNull<any>(p.tareas);
@@ -91,9 +93,25 @@ export default async function Page({
         <NewParteModal
           expedientes={(exps || []) as ExpedienteMini[]}
           tareas={(ts || []) as TareaMini[]}
+          onCreate={async (fd) => {
+            'use server';
+            const sb2 = supabaseAdmin();
+            const payload = {
+              fecha: String(fd.get('fecha') || ''),
+              hora_inicio: String(fd.get('hora_inicio') || '') || null,
+              hora_fin: String(fd.get('hora_fin') || '') || null,
+              horas: Number(fd.get('horas') || 0),
+              comentario: String(fd.get('comentario') || '') || null,
+              expediente_id: Number(fd.get('expediente_id')),
+              tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
+            };
+            const { error: eIns } = await sb2.from('partes').insert(payload);
+            if (eIns) throw new Error(eIns.message);
+          }}
         />
       </div>
 
+      {/* Conservamos tu tabla existente */}
       <PartesTabla partes={partes as any} />
     </main>
   );
