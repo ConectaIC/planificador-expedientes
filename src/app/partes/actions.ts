@@ -13,8 +13,14 @@ async function recalcHorasForTarea(supabase: ReturnType<typeof createClient>, ta
   if (ePartes) throw new Error(ePartes.message);
 
   const total = (partes ?? []).reduce((acc, p) => {
-    const ini = p.hora_inicio ? new Date(p.hora_inicio).getTime() : NaN;
-    const fin = p.hora_fin ? new Date(p.hora_fin).getTime() : NaN;
+const ini = p.hora_inicio
+  ? new Date(p.hora_inicio as string | number | Date).getTime()
+  : NaN;
+
+const fin = p.hora_fin
+  ? new Date(p.hora_fin as string | number | Date).getTime()
+  : NaN;
+
     if (Number.isFinite(ini) && Number.isFinite(fin) && fin > ini) {
       acc += (fin - ini) / 1000 / 3600;
     }
