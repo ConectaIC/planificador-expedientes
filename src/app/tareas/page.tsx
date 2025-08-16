@@ -1,5 +1,8 @@
-// Server Component
+// src/app/tareas/page.tsx
 import { createClient } from '@/lib/supabaseServer';
+import TareasClient from '@/components/TareasClient';
+
+export const revalidate = 0; // siempre fresco en desarrollo
 
 type Tarea = {
   id: number;
@@ -9,10 +12,14 @@ type Tarea = {
   horas_realizadas: number | null;
   estado: string | null;
   prioridad: string | null;
-  vencimiento: string | null; // date
+  vencimiento: string | null;
 };
 
-type ExpedienteRef = { id: number; codigo: string };
+type ExpedienteRef = {
+  id: number;
+  codigo: string;
+  proyecto: string | null;
+};
 
 export default async function PageTareas() {
   const supabase = createClient();
@@ -23,31 +30,24 @@ export default async function PageTareas() {
     .order('vencimiento', { ascending: true, nullsFirst: true });
 
   if (e1) {
-    return (
-      <main className="container">
-        <h1 className="page-title">Tareas</h1>
-        <p className="text-red-600">Error al cargar tareas: {e1.message}</p>
-      </main>
-    );
+    console.error('Error cargando tareas:', e1.message);
+    return <main className="container"><h1 className="page-title">Tareas</h1><p>Error cargando tareas.</p></main>;
   }
 
-  const { data: expedientes } = await supabase
+  const { data: expedientes, error: e2 } = await supabase
     .from('expedientes')
-    .select('id, codigo');
+    .select('id, codigo, proyecto')
+    .order('codigo', { ascending: true });
+
+  if (e2) {
+    console.error('Error cargando expedientes:', e2.message);
+    return <main className="container"><h1 className="page-title">Tareas</h1><p>Error cargando expedientes.</p></main>;
+  }
 
   return (
     <main className="container">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="page-title">Tareas</h1>
-      </div>
-
-      <TareasClient tareas={tareas ?? []} expedientes={expedientes ?? []} />
+      <h1 className="page-title">Tareas</h1>
+      <TareasClient tareas={(tareas ?? []) as Tarea[]} expedientes={(expedientes ?? []) as ExpedienteRef[]} />
     </main>
   );
 }
-
-/**
- * Importa el componente cliente desde /components
- * (no declares "use client" dentro de este archivo)
- */
-import TareasClient from '@/components/TareasClient';
