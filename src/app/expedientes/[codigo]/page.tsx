@@ -1,216 +1,156 @@
-import { createClient } from '@supabase/supabase-js';
-import TaskModal from '@/components/TaskModal';
+// src/app/expedientes/[codigo]/page.tsx
+import { cookies } from 'next/headers';
 import Link from 'next/link';
-import React from 'react';
+import { notFound } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { createClient } from '@/lib/supabaseServer';
+import ClientNewTask from '@/components/ClientNewTask';
+import ClientTaskActions from '@/components/ClientTaskActions';
 
-type Expediente = { id: number; codigo: string; proyecto?: string | null };
+type ExpedienteMini = { id: number; codigo: string; proyecto: string };
 type Tarea = {
   id: number;
   expediente_id: number;
   titulo: string;
-  horas_previstas?: number | null;
-  horas_realizadas?: number | null;
-  estado?: 'Pendiente' | 'En curso' | 'Completada';
-  prioridad?: 'Baja' | 'Media' | 'Alta';
-  vencimiento?: string | null;
+  horas_previstas: number | null;
+  horas_realizadas: number | null;
+  estado: 'Pendiente' | 'En curso' | 'Completada' | null;
+  prioridad: 'Baja' | 'Media' | 'Alta' | null;
+  vencimiento: string | null;
 };
 
-function getAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
-}
+async function fetchExpedienteYtareas(codigo: string) {
+  const supabase = createClient(cookies());
 
-async function fetchByCodigo(codigo: string) {
-  const supa = getAdmin();
-  const { data: exp, error: e1 } = await supa.from('expedientes').select('*').eq('codigo', codigo).maybeSingle();
-  if (e1) throw new Error(e1.message);
-  if (!exp) throw new Error(`No se encontró el expediente con código ${codigo}`);
+  const { data: exp, error: e1 } = await supabase
+    .from('expedientes')
+    .select('*')
+    .eq('codigo', codigo)
+    .maybeSingle();
 
-  const { data: tareas, error: e2 } = await supa
+  if (e1) throw new Error(`No se pudo cargar el expediente “${codigo}”: ${e1.message}`);
+  if (!exp) notFound();
+
+  const { data: tareas, error: e2 } = await supabase
     .from('tareas')
     .select('*')
     .eq('expediente_id', exp.id)
     .order('vencimiento', { ascending: true, nullsFirst: true });
-  if (e2) throw new Error(e2.message);
 
-  return { exp: exp as Expediente, tareas: (tareas ?? []) as Tarea[] };
+  if (e2) throw new Error(`Error al cargar tareas del expediente: ${e2.message}`);
+
+  // Para selects en modales (por si se necesita cambiar expediente de tarea)
+  const { data: expsMini } = await supabase
+    .from('expedientes')
+    .select('id,codigo,proyecto')
+    .order('codigo', { ascending: true });
+
+  return { exp, tareas: (tareas ?? []) as Tarea[], expsMini: (expsMini ?? []) as ExpedienteMini[] };
 }
 
-// Server actions para tareas de este expediente
-export async function createTaskAction(form: FormData) {
+// Server Actions para tareas
+export async function createTask(fd: FormData) {
   'use server';
-  const supa = getAdmin();
+  const supabase = createClient(cookies());
   const payload = {
-    expediente_id: Number(form.get('expediente_id')),
-    titulo: String(form.get('titulo') ?? ''),
-    horas_previstas: Number(form.get('horas_previstas') ?? 0) || 0,
-    horas_realizadas: Number(form.get('horas_realizadas') ?? 0) || 0,
-    estado: String(form.get('estado') ?? 'Pendiente'),
-    prioridad: String(form.get('prioridad') ?? 'Media'),
-    vencimiento: String(form.get('vencimiento') ?? '') || null,
+    expediente_id: Number(fd.get('expediente_id')),
+    titulo: String(fd.get('titulo') || '').trim(),
+    horas_previstas: Number(fd.get('horas_previstas') || 0) || null,
+    estado: (String(fd.get('estado') || '') || null) as any,
+    prioridad: (String(fd.get('prioridad') || '') || null) as any,
+    vencimiento: String(fd.get('vencimiento') || '') || null,
   };
-  const { error } = await supa.from('tareas').insert(payload);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from('tareas').insert(payload);
+  if (error) throw new Error(`No se pudo crear la tarea: ${error.message}`);
+  revalidatePath('/expedientes');
+  revalidatePath(`/expedientes/${encodeURIComponent(fd.get('expediente_codigo') as string || '')}`);
 }
 
-export async function updateTaskAction(form: FormData) {
+export async function updateTask(fd: FormData) {
   'use server';
-  const supa = getAdmin();
-  const id = Number(form.get('id'));
-  const payload = {
-    titulo: String(form.get('titulo') ?? ''),
-    horas_previstas: Number(form.get('horas_previstas') ?? 0) || 0,
-    horas_realizadas: Number(form.get('horas_realizadas') ?? 0) || 0,
-    estado: String(form.get('estado') ?? 'Pendiente'),
-    prioridad: String(form.get('prioridad') ?? 'Media'),
-    vencimiento: String(form.get('vencimiento') ?? '') || null,
+  const supabase = createClient(cookies());
+  const id = Number(fd.get('id'));
+  const payload: any = {
+    titulo: String(fd.get('titulo') || '').trim(),
+    horas_previstas: Number(fd.get('horas_previstas') || 0) || null,
+    estado: String(fd.get('estado') || '') || null,
+    prioridad: String(fd.get('prioridad') || '') || null,
+    vencimiento: String(fd.get('vencimiento') || '') || null,
   };
-  const { error } = await supa.from('tareas').update(payload).eq('id', id);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from('tareas').update(payload).eq('id', id);
+  if (error) throw new Error(`No se pudo actualizar la tarea: ${error.message}`);
+  revalidatePath('/expedientes');
 }
 
-export async function deleteTaskAction(form: FormData) {
+export async function deleteTask(fd: FormData) {
   'use server';
-  const supa = getAdmin();
-  const id = Number(form.get('id'));
-  const { error } = await supa.from('tareas').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+  const supabase = createClient(cookies());
+  const id = Number(fd.get('id'));
+  const { error } = await supabase.from('tareas').delete().eq('id', id);
+  if (error) throw new Error(`No se pudo borrar la tarea: ${error.message}`);
+  revalidatePath('/expedientes');
 }
 
 export default async function Page({ params }: { params: { codigo: string } }) {
-  const { exp, tareas } = await fetchByCodigo(params.codigo);
+  const { codigo } = params;
+  const { exp, tareas, expsMini } = await fetchExpedienteYtareas(codigo);
 
   return (
     <main className="container">
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2>Expediente · {exp.codigo}</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link href="/expedientes" className="btn-link">← Volver</Link>
-          <NewTaskButton expedienteId={exp.id} />
+        <div>
+          <h2>Expediente · {exp.codigo}</h2>
+          <div className="text-muted">{exp.proyecto}</div>
         </div>
+        <ClientNewTask expedienteId={exp.id} expedienteCodigo={exp.codigo} action={createTask} />
       </div>
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Título</th>
-            <th>Previstas</th>
-            <th>Realizadas</th>
-            <th>Estado</th>
-            <th>Prioridad</th>
-            <th>Vencimiento</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tareas.map((t) => (
-            <tr key={t.id}>
-              <td>{t.titulo}</td>
-              <td>{Number(t.horas_previstas ?? 0).toFixed(2)}</td>
-              <td>{Number(t.horas_realizadas ?? 0).toFixed(2)}</td>
-              <td>{t.estado ?? '—'}</td>
-              <td>{t.prioridad ?? '—'}</td>
-              <td>{t.vencimiento ?? '—'}</td>
-              <td>
-                <span style={{ display: 'inline-flex', gap: 6 }}>
-                  <EditTaskButton tarea={t} />
-                  <DeleteTaskButton id={t.id} />
-                </span>
-              </td>
-            </tr>
-          ))}
-          {tareas.length === 0 && (
-            <tr>
-              <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>No hay tareas vinculadas.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <div className="card">
+        <div className="table-responsive">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Tarea</th>
+                <th style={{ width: 120, textAlign: 'right' }}>H. prev.</th>
+                <th style={{ width: 120, textAlign: 'right' }}>H. real.</th>
+                <th style={{ width: 130 }}>Estado</th>
+                <th style={{ width: 110 }}>Prioridad</th>
+                <th style={{ width: 120 }}>Vencimiento</th>
+                <th style={{ width: 90, textAlign: 'center' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tareas.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>No hay tareas en este expediente.</td>
+                </tr>
+              ) : (
+                tareas.map((t) => (
+                  <tr key={t.id}>
+                    <td>{t.titulo}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(t.horas_previstas ?? 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(t.horas_realizadas ?? 0).toFixed(2)}</td>
+                    <td>{t.estado ?? '—'}</td>
+                    <td>{t.prioridad ?? '—'}</td>
+                    <td>{t.vencimiento ?? '—'}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <ClientTaskActions
+                        tarea={t}
+                        expedientes={expsMini}
+                        updateAction={updateTask}
+                        deleteAction={deleteTask}
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3">
+          <Link href="/expedientes" className="btn">⬅ Volver</Link>
+        </div>
+      </div>
     </main>
-  );
-}
-
-/** Wrappers client para abrir modales con server actions */
-function NewTaskButton({ expedienteId }: { expedienteId: number }) {
-  return <ClientNewTask expedienteId={expedienteId} action={createTaskAction} />;
-}
-function EditTaskButton({ tarea }: { tarea: any }) {
-  return <ClientEditTask tarea={tarea} action={updateTaskAction} />;
-}
-function DeleteTaskButton({ id }: { id: number }) {
-  return <ClientDeleteTask id={id} action={deleteTaskAction} />;
-}
-
-'use client';
-import { useState } from 'react';
-import Modal from '@/components/Modal';
-
-function ClientNewTask({ expedienteId, action }: { expedienteId: number; action: (fd: FormData) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  return (
-    <>
-      <button aria-label="Nueva tarea" className="icon-btn" onClick={() => setOpen(true)}>➕</button>
-      <TaskModal
-        open={open}
-        onClose={() => setOpen(false)}
-        expedienteId={expedienteId}
-        initial={null}
-        title="Nueva tarea"
-        submitting={submitting}
-        onSubmit={async (fd) => {
-          fd.set('expediente_id', String(expedienteId));
-          setSubmitting(true);
-          try { await action(fd); } finally { setSubmitting(false); }
-        }}
-      />
-    </>
-  );
-}
-
-function ClientEditTask({ tarea, action }: { tarea: any; action: (fd: FormData) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  return (
-    <>
-      <button aria-label="Editar tarea" className="icon-btn" onClick={() => setOpen(true)}>✏️</button>
-      <TaskModal
-        open={open}
-        onClose={() => setOpen(false)}
-        initial={tarea}
-        title="Editar tarea"
-        submitting={submitting}
-        onSubmit={async (fd) => {
-          fd.set('id', String(tarea.id));
-          setSubmitting(true);
-          try { await action(fd); } finally { setSubmitting(false); }
-        }}
-      />
-    </>
-  );
-}
-
-function ClientDeleteTask({ id, action }: { id: number; action: (fd: FormData) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  return (
-    <>
-      <button aria-label="Borrar tarea" className="icon-btn" onClick={() => setOpen(true)}>🗑️</button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Confirmar borrado">
-        <p>¿Seguro que deseas borrar esta tarea?</p>
-        <form
-          action={async (fd) => {
-            fd.set('id', String(id));
-            setSubmitting(true);
-            try { await action(fd); } finally { setSubmitting(false); }
-          }}
-          style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}
-        >
-          <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>✖️</button>
-          <button type="submit" className="btn-danger" disabled={submitting}>{submitting ? '…' : '🗑️'}</button>
-        </form>
-      </Modal>
-    </>
   );
 }
