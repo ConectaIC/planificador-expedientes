@@ -1,120 +1,70 @@
-// src/app/expedientes/page.tsx
-import { createClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
-import ExpedienteRowActions from '@/components/ExpedienteRowActions';
-import FiltrosExpedientes from '@/components/FiltrosExpedientes';
+import { createClient } from '@/lib/supabaseServer';
+import NewExpedienteButton from '@/components/NewExpedienteButton';
+import ExpedienteRowActions, { Expediente } from '@/components/ExpedienteRowActions';
+import { revalidatePath } from 'next/cache';
 
-type Expediente = {
-  id: number;
-  codigo: string;
-  proyecto: string;
-  cliente: string;
-  inicio: string | null;
-  fin: string | null;
-  prioridad: 'Baja' | 'Media' | 'Alta' | null;
-  estado: 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado' | null;
-  horas_previstas: number | null;
-  horas_reales: number | null;
-};
-
-export default async function Page({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+async function fetchExpedientes(): Promise<Expediente[]> {
   const supabase = createClient();
+  const { data, error } = await supabase
+    .from('expedientes')
+    .select('id,codigo,proyecto,cliente,prioridad,estado,fin')
+    .order('fin', { ascending: true, nullsFirst: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as any;
+}
 
-  const q = (typeof searchParams.q === 'string' ? searchParams.q : '')?.trim();
-  const estado = (typeof searchParams.estado === 'string' ? searchParams.estado : '')?.trim();
-  const prioridad = (typeof searchParams.prioridad === 'string' ? searchParams.prioridad : '')?.trim();
-  const ordenar = (typeof searchParams.ordenar === 'string' ? searchParams.ordenar : 'inicio')?.trim();
+export default async function Page() {
+  const expedientes = await fetchExpedientes();
 
-  let query = supabase.from('expedientes').select('*');
-
-  if (q) {
-    query = query.or(`codigo.ilike.%${q}%,proyecto.ilike.%${q}%,cliente.ilike.%${q}%`);
-  }
-  if (estado) {
-    query = query.eq('estado', estado);
-  }
-  if (prioridad) {
-    query = query.eq('prioridad', prioridad);
-  }
-
-  const orderMap: Record<string, { col: string; asc: boolean }> = {
-    inicio: { col: 'inicio', asc: true },
-    fin: { col: 'fin', asc: true },
-    horas: { col: 'horas_reales', asc: false },
-    prioridad: { col: 'prioridad', asc: true },
+  // callbacks opcionales para refrescar tras crear/editar/borrar
+  const onMutate = async () => {
+    'use server';
+    revalidatePath('/expedientes');
   };
-  const { col, asc } = orderMap[ordenar] || orderMap.inicio;
-  query = query.order(col, { ascending: asc, nullsFirst: true });
-
-  const { data, error } = await query;
-  if (error) {
-    return (
-      <div className="card">
-        <h2 className="card-title">Expedientes</h2>
-        <p style={{ color: 'crimson' }}>Error al cargar expedientes: {error.message}</p>
-      </div>
-    );
-  }
-
-  const expedientes = (data || []) as Expediente[];
 
   return (
-    <>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-toolbar" style={{ justifyContent: 'space-between' }}>
-          <h2 className="card-title">Expedientes</h2>
-          <div>
-            {/* Botón “solo emoji” para NUEVO */}
-            <Link href="/expedientes?nuevo=1" className="icon-btn" aria-label="Nuevo expediente" title="Nuevo expediente">➕</Link>
-          </div>
-        </div>
-        {/* Filtros automáticos (sin botón aplicar) */}
-        <FiltrosExpedientes />
+    <main className="container">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="page-title">Expedientes</h1>
+        {/* Botón ➕ */}
+        <NewExpedienteButton onCreated={onMutate} />
       </div>
 
-      <div className="card">
+      <div className="table-card">
         <table className="table">
           <thead>
             <tr>
               <th>Código</th>
               <th>Proyecto</th>
               <th>Cliente</th>
-              <th>Inicio</th>
               <th>Fin</th>
               <th>Prioridad</th>
               <th>Estado</th>
-              <th>Horas (Prev/Real)</th>
-              <th style={{ textAlign: 'center', width: 90 }}>⋯</th>
+              <th style={{ width: 100, textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {expedientes.map((e) => (
               <tr key={e.id}>
-                <td><Link href={`/expedientes/${encodeURIComponent(e.codigo)}`}>{e.codigo}</Link></td>
-                <td>{e.proyecto}</td>
-                <td>{e.cliente}</td>
-                <td>{e.inicio ?? '—'}</td>
-                <td>{e.fin ?? '—'}</td>
                 <td>
-                  <span className={`badge ${e.prioridad === 'Alta' ? 'high' : e.prioridad === 'Media' ? 'medium' : 'low'}`}>
-                    {e.prioridad ?? '—'}
-                  </span>
+                  <Link href={`/expedientes/${encodeURIComponent(e.codigo)}`} className="link">
+                    {e.codigo}
+                  </Link>
                 </td>
+                <td>{e.proyecto ?? '—'}</td>
+                <td>{e.cliente ?? '—'}</td>
+                <td>{e.fin ?? '—'}</td>
+                <td>{e.prioridad ?? '—'}</td>
                 <td>{e.estado ?? '—'}</td>
                 <td>
-                  {(e.horas_previstas ?? 0).toFixed(1)} / <strong>{(e.horas_reales ?? 0).toFixed(1)}</strong>
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <ExpedienteRowActions expediente={e} />
+                  <ExpedienteRowActions expediente={e} onUpdate={onMutate} onDelete={onMutate} />
                 </td>
               </tr>
             ))}
-            {expedientes.length === 0 && (
-              <tr><td colSpan={9} style={{ color: '#64748b', textAlign: 'center', padding: 18 }}>No hay expedientes</td></tr>
-            )}
           </tbody>
         </table>
       </div>
-    </>
+    </main>
   );
 }
