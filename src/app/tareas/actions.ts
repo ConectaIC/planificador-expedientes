@@ -1,136 +1,104 @@
+// src/app/tareas/actions.ts
 'use server';
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabaseServer';
 
-/** Recalcula horas_realizadas de la tarea y del expediente al que pertenece */
-async function recalcHorasForTarea(supabase: ReturnType<typeof createClient>, tareaId: number) {
-  // 1) horas realizadas de la tarea = suma de partes (hora_fin - hora_inicio)
-  const { data: partes, error: ePartes } = await supabase
+/** Convierte "HH:MM" o "HH:MM:SS" a minutos enteros */
+function parseTimeToMinutes(t: unknown): number {
+  if (typeof t !== 'string' || !t) return NaN;
+  const [hh, mm, ss] = t.split(':').map((x) => Number(x));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
+  const s = Number.isFinite(ss) ? ss : 0;
+  return hh * 60 + mm + s / 60;
+}
+
+/** Suma horas de las partes de una tarea y guarda en tareas.horas_realizadas */
+export async function recomputeTareaHours(tareaId: number) {
+  if (!Number.isFinite(tareaId)) return;
+  const supabase = createClient();
+
+  const { data: partes, error } = await supabase
     .from('partes')
-    .select('hora_inicio,hora_fin')
+    .select('horas, hora_inicio, hora_fin')
     .eq('tarea_id', tareaId);
 
-  if (ePartes) throw new Error(`Error leyendo partes: ${ePartes.message}`);
+  if (error) throw new Error(error.message);
 
-  const totalHoras = (partes ?? []).reduce((acc, p) => {
-    const ini = p.hora_inicio ? new Date(p.hora_inicio).getTime() : NaN;
-    const fin = p.hora_fin ? new Date(p.hora_fin).getTime() : NaN;
+  const totalHoras = (partes ?? []).reduce((acc, p: any) => {
+    if (typeof p.horas === 'number' && Number.isFinite(p.horas)) {
+      return acc + p.horas;
+    }
+    const ini = parseTimeToMinutes(p.hora_inicio);
+    const fin = parseTimeToMinutes(p.hora_fin);
     if (Number.isFinite(ini) && Number.isFinite(fin) && fin > ini) {
-      acc += (fin - ini) / 1000 / 3600;
+      return acc + (fin - ini) / 60;
     }
     return acc;
   }, 0);
 
-  const redondeo = Math.round(totalHoras * 100) / 100;
-
-  // 2) actualizar tarea
-  {
-    const { error } = await supabase
-      .from('tareas')
-      .update({ horas_realizadas: redondeo })
-      .eq('id', tareaId);
-    if (error) throw new Error(`No se pudo actualizar horas de la tarea: ${error.message}`);
-  }
-
-  // 3) buscar expediente_id de la tarea
-  const { data: tarea, error: eT } = await supabase
+  const { error: up } = await supabase
     .from('tareas')
-    .select('expediente_id')
-    .eq('id', tareaId)
-    .single();
+    .update({ horas_realizadas: totalHoras })
+    .eq('id', tareaId);
 
-  if (eT) throw new Error(`No se pudo obtener la tarea: ${eT.message}`);
-  const expedienteId = tarea?.expediente_id as number | null;
-  if (!expedienteId) return;
+  if (up) throw new Error(up.message);
 
-  // 4) horas del expediente = suma horas_realizadas de sus tareas
-  const { data: tareasDelExp, error: eTx } = await supabase
-    .from('tareas')
-    .select('horas_realizadas')
-    .eq('expediente_id', expedienteId);
-
-  if (eTx) throw new Error(`Error sumando tareas del expediente: ${eTx.message}`);
-
-  const totalExp = (tareasDelExp ?? []).reduce((acc, t) => acc + (Number(t.horas_realizadas) || 0), 0);
-  const totalExpRound = Math.round(totalExp * 100) / 100;
-
-  const { error: eUpd } = await supabase
-    .from('expedientes')
-    .update({ horas_realizadas: totalExpRound })
-    .eq('id', expedienteId);
-
-  if (eUpd) throw new Error(`No se pudo actualizar horas del expediente: ${eUpd.message}`);
+  revalidatePath('/tareas');
 }
+
+/* Acciones CRUD (opcionales; quedan tipadas y no rompen el build aunque no se usen) */
 
 export async function createTareaAction(fd: FormData) {
   const supabase = createClient();
   const payload = {
-    expediente_id: Number(fd.get('expediente_id') ?? 0) || null,
+    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
     titulo: String(fd.get('titulo') ?? '').trim(),
-    vencimiento: String(fd.get('vencimiento') ?? '').trim() || null,
-    prioridad: String(fd.get('prioridad') ?? '').trim() || null,
-    estado: String(fd.get('estado') ?? '').trim() || null,
-    horas_previstas: Number(fd.get('horas_previstas') ?? 0) || 0,
-    tipo: String(fd.get('tipo') ?? '').trim() || null,
-    descripcion: String(fd.get('descripcion') ?? '').trim() || null,
+    horas_previstas: fd.get('horas_previstas') ? Number(fd.get('horas_previstas')) : null,
+    horas_realizadas: fd.get('horas_realizadas') ? Number(fd.get('horas_realizadas')) : 0,
+    estado: (fd.get('estado') as string) || null,
+    prioridad: (fd.get('prioridad') as string) || null,
+    vencimiento: (fd.get('vencimiento') as string) || null,
   };
-  if (!payload.titulo) throw new Error('El título es obligatorio');
 
-  const { data, error } = await supabase.from('tareas').insert(payload).select('id').single();
+  const { data, error } = await supabase
+    .from('tareas')
+    .insert(payload)
+    .select('id')
+    .single();
+
   if (error) throw new Error(error.message);
 
-  // Al crear no hay horas realizadas todavía, pero revalidamos listado
+  if (data?.id) await recomputeTareaHours(Number(data.id));
   revalidatePath('/tareas');
-  if (payload.expediente_id) revalidatePath('/expedientes');
-  return data?.id as number | undefined;
 }
 
 export async function updateTareaAction(fd: FormData) {
   const supabase = createClient();
-  const id = Number(fd.get('id') ?? 0);
-  if (!id) throw new Error('ID de tarea inválido');
+  const id = Number(fd.get('id'));
+  if (!Number.isFinite(id)) throw new Error('ID de tarea inválido');
 
   const patch: Record<string, any> = {
-    titulo: String(fd.get('titulo') ?? '').trim() || undefined,
-    vencimiento: String(fd.get('vencimiento') ?? '').trim() || null,
-    prioridad: String(fd.get('prioridad') ?? '').trim() || null,
-    estado: String(fd.get('estado') ?? '').trim() || null,
-    horas_previstas: Number(fd.get('horas_previstas') ?? '') || 0,
-    tipo: String(fd.get('tipo') ?? '').trim() || null,
-    descripcion: String(fd.get('descripcion') ?? '').trim() || null,
-    expediente_id: Number(fd.get('expediente_id') ?? 0) || null,
+    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
+    titulo: String(fd.get('titulo') ?? '').trim(),
+    horas_previstas: fd.get('horas_previstas') ? Number(fd.get('horas_previstas')) : null,
+    estado: (fd.get('estado') as string) || null,
+    prioridad: (fd.get('prioridad') as string) || null,
+    vencimiento: (fd.get('vencimiento') as string) || null,
   };
 
   const { error } = await supabase.from('tareas').update(patch).eq('id', id);
   if (error) throw new Error(error.message);
 
-  // Si cambió de expediente, el recálculo lo dispara la edición de partes.
+  await recomputeTareaHours(id);
   revalidatePath('/tareas');
-  revalidatePath('/expedientes');
 }
 
-export async function deleteTareaAction(fd: FormData) {
+export async function deleteTareaAction(id: number) {
   const supabase = createClient();
-  const id = Number(fd.get('id') ?? 0);
-  if (!id) throw new Error('ID inválido');
-
-  // Guardamos expediente_id para revalidad después
-  const { data: t, error: eT } = await supabase.from('tareas').select('expediente_id').eq('id', id).single();
-  if (eT) throw new Error(eT.message);
-  const expedienteId = t?.expediente_id as number | null;
 
   const { error } = await supabase.from('tareas').delete().eq('id', id);
   if (error) throw new Error(error.message);
 
   revalidatePath('/tareas');
-  if (expedienteId) revalidatePath('/expedientes');
-}
-
-/** Recalcular horas a mano si lo necesitas desde UI (no es obligatorio exponerlo) */
-export async function recalcTareaHorasAction(tareaId: number) {
-  const supabase = createClient();
-  await recalcHorasForTarea(supabase, tareaId);
-  revalidatePath('/tareas');
-  revalidatePath('/expedientes');
 }
