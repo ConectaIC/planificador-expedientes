@@ -1,118 +1,209 @@
 // src/app/partes/page.tsx
 // Tipo: Server Component
 
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import NewParteModal from '../../components/NewParteModal';
-import PartesTabla from '../../components/PartesTabla';
+'use client';
 
-type ExpedienteMini = { id: number; codigo: string; proyecto?: string | null };
-type TareaMini = { id: number; titulo: string; expediente_id: number };
+import { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import NewParteModal, { MiniExpediente as MiniExp, MiniTarea, ParteInput } from '@/components/NewParteModal';
 
 type ParteRow = {
   id: number;
-  fecha: string | null;
+  fecha: string;
   hora_inicio: string | null;
   hora_fin: string | null;
   horas: number | null;
   comentario: string | null;
-  expediente: { id: number; codigo: string } | null;
-  tarea: { id: number; titulo: string } | null;
+  expediente_id: number | null;
+  tarea_id: number | null;
+  expedientes: { id: number; codigo: string } | null;
+  tareas: { id: number; titulo: string } | null;
 };
 
-function firstOrNull<T>(rel: T | T[] | null | undefined): T | null {
-  if (!rel) return null;
-  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
-  const q = (k: string) => {
-    const v = searchParams?.[k];
-    return Array.isArray(v) ? v[0] : v || '';
-  };
-  const ordenar = (q('orden') || 'fecha_desc').trim();
+export default function PartesPage() {
+  const [rows, setRows] = useState<ParteRow[]>([]);
+  const [exps, setExps] = useState<MiniExp[]>([]);
+  const [tareas, setTareas] = useState<MiniTarea[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const sb = supabaseAdmin();
+  const [q, setQ] = useState('');
+  const [orden, setOrden] = useState<'fecha_asc' | 'fecha_desc' | 'codigo_asc' | 'codigo_desc' | 'horas_asc' | 'horas_desc'>('fecha_desc');
 
-  // Datos para modal de creación
-  const [{ data: exps }, { data: ts }] = await Promise.all([
-    sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true }),
-    sb.from('tareas').select('id,titulo,expediente_id').order('id', { ascending: true }),
-  ]);
+  const [openNew, setOpenNew] = useState(false);
 
-  let query = sb
-    .from('partes')
-    .select('id,fecha,hora_inicio,hora_fin,horas,comentario,expedientes(id,codigo),tareas(id,titulo)');
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setErr(null);
 
-  const [campo, dir] = (() => {
-    switch (ordenar) {
-      case 'fecha_asc':
-        return ['fecha', { ascending: true as const }];
-      case 'fecha_desc':
-      default:
-        return ['fecha', { ascending: false as const }];
+      const { data, error } = await supabase
+        .from('partes')
+        .select('id,fecha,hora_inicio,hora_fin,horas,comentario,expediente_id,tarea_id,expedientes(id,codigo),tareas(id,titulo)')
+        .order('fecha', { ascending: false });
+      if (error) throw error;
+
+      const { data: expsData, error: e2 } = await supabase
+        .from('expedientes')
+        .select('id,codigo')
+        .order('codigo', { ascending: true });
+      if (e2) throw e2;
+
+      const { data: tareasData, error: e3 } = await supabase
+        .from('tareas')
+        .select('id,titulo,expediente_id')
+        .order('titulo', { ascending: true });
+      if (e3) throw e3;
+
+      setRows((data as any) ?? []);
+      setExps(((expsData as any) ?? []).map((x: any) => ({ id: x.id, codigo: x.codigo })));
+      setTareas(((tareasData as any) ?? []).map((t: any) => ({ id: t.id, titulo: t.titulo, expediente_id: t.expediente_id })));
+    } catch (e: any) {
+      setErr(e?.message ?? 'No se pudieron cargar los partes');
+    } finally {
+      setLoading(false);
     }
-  })();
-
-  const { data, error } = await query.order(campo, dir);
-  if (error) {
-    return (
-      <main className="container">
-        <h1>Partes</h1>
-        <div className="error">Error al cargar partes: {error.message}</div>
-      </main>
-    );
   }
 
-  // Normalización de relaciones
-  const partes: ParteRow[] = (data || []).map((p: any) => {
-    const exp = firstOrNull<any>(p.expedientes);
-    const tarea = firstOrNull<any>(p.tareas);
-    return {
-      id: Number(p.id),
-      fecha: p.fecha ?? null,
-      hora_inicio: p.hora_inicio ?? null,
-      hora_fin: p.hora_fin ?? null,
-      horas: p.horas ?? null,
-      comentario: p.comentario ?? null,
-      expediente: exp ? { id: Number(exp.id), codigo: String(exp.codigo) } : null,
-      tarea: tarea ? { id: Number(tarea.id), titulo: String(tarea.titulo) } : null,
-    };
-  });
+  useEffect(() => { fetchData(); }, []);
+
+  const filtrados = useMemo(() => {
+    let list = rows.slice();
+    const qnorm = q.trim().toLowerCase();
+    if (qnorm) {
+      list = list.filter(
+        (r) =>
+          r.expedientes?.codigo?.toLowerCase().includes(qnorm) ||
+          r.tareas?.titulo?.toLowerCase().includes(qnorm) ||
+          r.comentario?.toLowerCase().includes(qnorm)
+      );
+    }
+    switch (orden) {
+      case 'fecha_asc':
+        list.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+        break;
+      case 'codigo_asc':
+        list.sort((a, b) => (a.expedientes?.codigo || '').localeCompare(b.expedientes?.codigo || ''));
+        break;
+      case 'codigo_desc':
+        list.sort((a, b) => (b.expedientes?.codigo || '').localeCompare(a.expedientes?.codigo || ''));
+        break;
+      case 'horas_asc':
+        list.sort((a, b) => (a.horas ?? 0) - (b.horas ?? 0));
+        break;
+      case 'horas_desc':
+        list.sort((a, b) => (b.horas ?? 0) - (a.horas ?? 0));
+        break;
+      default: // fecha_desc
+        list.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    }
+    return list;
+  }, [rows, q, orden]);
+
+  async function handleCreate(payload: ParteInput) {
+    const { error } = await supabase.from('partes').insert({
+      fecha: payload.fecha,
+      hora_inicio: payload.hora_inicio,
+      hora_fin: payload.hora_fin,
+      horas: payload.horas ?? null,
+      comentario: payload.comentario || null,
+      expediente_id: payload.expediente_id,
+      tarea_id: payload.tarea_id,
+    });
+    if (error) throw error;
+    await fetchData();
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('¿Borrar parte?')) return;
+    const { error } = await supabase.from('partes').delete().eq('id', id);
+    if (error) alert(error.message);
+    await fetchData();
+  }
 
   return (
     <main className="container">
-      <div
-        className="card"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
-      >
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <h1>Partes</h1>
-        <NewParteModal
-          expedientes={(exps || []) as ExpedienteMini[]}
-          tareas={(ts || []) as TareaMini[]}
-          onCreate={async (fd) => {
-            'use server';
-            const sb2 = supabaseAdmin();
-            const payload = {
-              fecha: String(fd.get('fecha') || ''),
-              hora_inicio: String(fd.get('hora_inicio') || '') || null,
-              hora_fin: String(fd.get('hora_fin') || '') || null,
-              horas: Number(fd.get('horas') || 0),
-              comentario: String(fd.get('comentario') || '') || null,
-              expediente_id: Number(fd.get('expediente_id')),
-              tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
-            };
-            const { error: eIns } = await sb2.from('partes').insert(payload);
-            if (eIns) throw new Error(eIns.message);
-          }}
-        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="icon-btn" aria-label="Nuevo parte" title="Nuevo parte" onClick={() => setOpenNew(true)}>
+            <span className="icon-emoji">➕</span>
+          </button>
+        </div>
       </div>
 
-      {/* Conservamos tu tabla existente */}
-      <PartesTabla partes={partes as any} />
+      <div className="filters">
+        <input className="inp" placeholder="Buscar por expediente, tarea o comentario" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="inp" value={orden} onChange={(e) => setOrden(e.target.value as any)}>
+          <option value="fecha_desc">Orden: Fecha ↓</option>
+          <option value="fecha_asc">Orden: Fecha ↑</option>
+          <option value="codigo_asc">Orden: Código ↑</option>
+          <option value="codigo_desc">Orden: Código ↓</option>
+          <option value="horas_asc">Orden: Horas ↑</option>
+          <option value="horas_desc">Orden: Horas ↓</option>
+        </select>
+      </div>
+
+      {err && <div className="alert error">Error al cargar partes: {err}</div>}
+      {loading ? (
+        <div className="muted">Cargando…</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Expediente</th>
+                <th>Tarea</th>
+                <th>Inicio</th>
+                <th>Fin</th>
+                <th>Horas</th>
+                <th>Comentario</th>
+                <th style={{ width: 90, textAlign: 'center' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.fecha}</td>
+                  <td>
+                    {p.expedientes?.codigo ? (
+                      <a className="link" href={`/expedientes/${encodeURIComponent(p.expedientes.codigo)}`}>{p.expedientes.codigo}</a>
+                    ) : '—'}
+                  </td>
+                  <td>{p.tareas?.titulo ?? '—'}</td>
+                  <td>{p.hora_inicio ?? '—'}</td>
+                  <td>{p.hora_fin ?? '—'}</td>
+                  <td>{(p.horas ?? 0).toFixed(2)}</td>
+                  <td>{p.comentario ?? '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    {/* Edición de parte podría venir después como EditParteModal */}
+                    <button className="icon-btn" aria-label="Borrar" title="Borrar" onClick={() => handleDelete(p.id)}>
+                      <span className="icon-emoji">🗑️</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filtrados.length === 0 && (
+                <tr><td colSpan={8} className="muted">Sin resultados</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <NewParteModal
+        open={openNew}
+        onClose={() => setOpenNew(false)}
+        expedientes={exps}
+        tareas={tareas}
+        onCreate={handleCreate}
+      />
     </main>
   );
 }
