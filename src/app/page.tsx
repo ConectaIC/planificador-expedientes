@@ -1,31 +1,21 @@
-// src/app/page.tsx
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
-
-export default function HomePage() {
+export default function Home() {
   return (
-    <main>
-      <h2>Panel principal</h2>
-
-      <div style={{display:'flex', gap:12, flexWrap:'wrap', marginTop:12}}>
-        <a href="/expedientes">
-          <button>📁 Expedientes</button>
-        </a>
-        <a href="/partes">
-          <button>⏱️ Imputación de horas</button>
-        </a>
-        <a href="/tareas">
-          <button>📝 Ver todas las tareas</button>
-        </a>
-        <a href="/resumen">
-          <button>🧠 Resumen para asistente</button>
-        </a>
+    <div className="hero">
+      <div className="hero-card">
+        <h1 className="hero-title">Bienvenido/a</h1>
+        <p className="hero-sub">Accede rápidamente a los módulos principales</p>
+        <div className="actions">
+          <a className="action-btn" href="/expedientes" aria-label="Expedientes">
+            <span className="action-emoji">📁</span> Expedientes
+          </a>
+          <a className="action-btn" href="/tareas" aria-label="Tareas">
+            <span className="action-emoji">✅</span> Tareas
+          </a>
+          <a className="action-btn" href="/partes" aria-label="Partes">
+            <span className="action-emoji">🧾</span> Partes
+          </a>
+        </div>
       </div>
-
-      <p style={{marginTop:16, opacity:.8}}>
-        Usa los accesos rápidos para navegar. Desde <strong>Expedientes</strong> puedes crear/editar/borrar expedientes
-        y desde <strong>Tareas</strong> ver el listado global con filtros.
-      </p>
-    </main>
+    </div>
   );
 }
