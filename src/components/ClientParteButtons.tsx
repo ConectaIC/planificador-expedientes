@@ -69,7 +69,7 @@ export default function ClientParteButtons({
           title="Nuevo parte"
           expedientes={expedientes || []}
           tareas={tareas || []}
-          parte={{}}
+          parte={EMPTY_PARTE}
         />
       </>
     );
