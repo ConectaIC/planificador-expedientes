@@ -2,32 +2,26 @@
 // Tipo: Server Component
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
 import TareaRowActions from '../../components/TareaRowActions';
+import FiltrosTareasGlobal from '../../components/FiltrosTareasGlobal';
 
 type ExpedienteMini = { id: number; codigo: string; proyecto?: string | null };
 
-type TareaView = {
+type TareaRow = {
   id: number;
   titulo: string;
   expediente_id: number;
-  estado: string | null;
-  prioridad: string | null;
   horas_previstas: number | null;
   horas_realizadas: number | null;
+  estado: string | null;
+  prioridad: string | null;
   vencimiento: string | null;
-  expedienteCodigo: string | null; // normalizado de la relación expedientes
+  expediente: { codigo: string } | null;
 };
 
-// Normaliza una relación que puede venir como objeto, array u null → objeto o null
 function firstOrNull<T>(rel: T | T[] | null | undefined): T | null {
   if (!rel) return null;
   return Array.isArray(rel) ? (rel[0] ?? null) : rel;
-}
-
-function fmt(n: any) {
-  const v = Number(n);
-  return Number.isFinite(v) ? v.toFixed(2) : '—';
 }
 
 export default async function Page({
@@ -40,39 +34,48 @@ export default async function Page({
     return Array.isArray(v) ? v[0] : v || '';
   };
 
-  const texto = (q('q') || '').trim();
-  const estado = (q('estado') || '').trim();
-  const prioridad = (q('prioridad') || '').trim();
   const ordenar = (q('orden') || 'vencimiento_asc').trim();
+  const estado = q('estado');
+  const prioridad = q('prioridad');
+  const busqueda = q('q');
 
   const sb = supabaseAdmin();
 
-  // datos para selector de expediente en el formulario de edición
-  const { data: expsMini } = await sb
-    .from('expedientes')
-    .select('id,codigo,proyecto')
-    .order('codigo', { ascending: true });
+  const [{ data: exps }, tareasRes] = await Promise.all([
+    sb.from('expedientes').select('id,codigo,proyecto').order('codigo', { ascending: true }),
+    (async () => {
+      let query = sb
+        .from('tareas')
+        .select(
+          'id,titulo,expediente_id,horas_previstas,horas_realizadas,estado,prioridad,vencimiento,expedientes(codigo)'
+        );
 
-  let query = sb
-    .from('tareas')
-    // OJO: la relación "expedientes(...)" puede venir como array u objeto; lo normalizamos abajo
-    .select('id,titulo,expediente_id,estado,prioridad,horas_previstas,horas_realizadas,vencimiento,expedientes(id,codigo)');
+      if (estado) query = query.eq('estado', estado);
+      if (prioridad) query = query.eq('prioridad', prioridad);
+      if (busqueda) {
+        // búsqueda básica por título (y por código de expediente a través de relación)
+        query = query.ilike('titulo', `%${busqueda}%`);
+      }
 
-  if (texto) query = query.or(`titulo.ilike.%${texto}%,expedientes.codigo.ilike.%${texto}%`);
-  if (estado) query = query.eq('estado', estado);
-  if (prioridad) query = query.eq('prioridad', prioridad);
+      const orderSpec =
+        ordenar === 'vencimiento_desc'
+          ? { column: 'vencimiento', ascending: false as const }
+          : ordenar === 'prioridad_desc'
+          ? { column: 'prioridad', ascending: false as const }
+          : ordenar === 'prioridad_asc'
+          ? { column: 'prioridad', ascending: true as const }
+          : ordenar === 'titulo_desc'
+          ? { column: 'titulo', ascending: false as const }
+          : ordenar === 'titulo_asc'
+          ? { column: 'titulo', ascending: true as const }
+          : // por defecto
+            { column: 'vencimiento', ascending: true as const };
 
-  const [campo, dir] = (() => {
-    switch (ordenar) {
-      case 'vencimiento_desc':
-        return ['vencimiento', { ascending: false as const }];
-      case 'vencimiento_asc':
-      default:
-        return ['vencimiento', { ascending: true as const }];
-    }
-  })();
+      return query.order(orderSpec.column, { ascending: orderSpec.ascending });
+    })(),
+  ]);
 
-  const { data, error } = await query.order(campo, dir);
+  const { data, error } = tareasRes;
   if (error) {
     return (
       <main className="container">
@@ -82,75 +85,106 @@ export default async function Page({
     );
   }
 
-  // Normalización fuerte de relaciones para evitar errores de TS
-  const tareas: TareaView[] = (data || []).map((r: any) => {
-    const exp = firstOrNull<any>(r.expedientes);
+  const expedientes = (exps || []) as ExpedienteMini[];
+
+  const tareas: TareaRow[] = (data || []).map((t: any) => {
+    const exp = firstOrNull<any>(t.expedientes);
     return {
-      id: Number(r.id),
-      titulo: r.titulo ?? '',
-      expediente_id: Number(r.expediente_id),
-      estado: r.estado ?? null,
-      prioridad: r.prioridad ?? null,
-      horas_previstas: r.horas_previstas ?? null,
-      horas_realizadas: r.horas_realizadas ?? null,
-      vencimiento: r.vencimiento ?? null,
-      expedienteCodigo: exp?.codigo ?? null,
+      id: Number(t.id),
+      titulo: String(t.titulo ?? ''),
+      expediente_id: Number(t.expediente_id),
+      horas_previstas: t.horas_previstas ?? null,
+      horas_realizadas: t.horas_realizadas ?? null,
+      estado: t.estado ?? null,
+      prioridad: t.prioridad ?? null,
+      vencimiento: t.vencimiento ?? null,
+      expediente: exp ? { codigo: String(exp.codigo) } : null,
     };
   });
 
+  const fmtH = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—');
+
   return (
     <main className="container">
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div className="card" style={{ marginBottom: 12 }}>
         <h1>Tareas</h1>
-        {/* Esta vista NO crea tareas. Alta desde el expediente */}
+        <p className="muted">Listado global (la creación de tareas se realiza desde el expediente).</p>
       </div>
 
+      {/* Barra de filtros (client) */}
       <FiltrosTareasGlobal />
 
-      <div className="table-wrap">
+      <div className="card" style={{ overflowX: 'auto' }}>
         <table className="table">
           <thead>
             <tr>
-              <th>Título</th>
+              <th style={{ minWidth: 160 }}>Título</th>
               <th>Expediente</th>
               <th>Estado</th>
               <th>Prioridad</th>
               <th>Vencimiento</th>
-              <th>Horas (real / prev.)</th>
-              <th style={{ textAlign: 'center' }}>Acciones</th>
+              <th>Previstas</th>
+              <th>Realizadas</th>
+              <th style={{ width: 100, textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {tareas.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center' }}>No hay tareas que cumplan el filtro.</td>
+            {tareas.map((t) => (
+              <tr key={t.id}>
+                <td>{t.titulo}</td>
+                <td>{t.expediente?.codigo || '—'}</td>
+                <td>{t.estado || '—'}</td>
+                <td>{t.prioridad || '—'}</td>
+                <td>{t.vencimiento || '—'}</td>
+                <td style={{ textAlign: 'right' }}>{fmtH(t.horas_previstas)}</td>
+                <td style={{ textAlign: 'right' }}>{fmtH(t.horas_realizadas)}</td>
+                <td style={{ textAlign: 'center' }}>
+                  {/* Acciones en modal */}
+                  <TareaRowActions
+                    tarea={{
+                      id: t.id,
+                      titulo: t.titulo,
+                      expediente_id: t.expediente_id,
+                      horas_previstas: t.horas_previstas,
+                      horas_realizadas: t.horas_realizadas,
+                      estado: t.estado,
+                      prioridad: t.prioridad,
+                      vencimiento: t.vencimiento,
+                    }}
+                    expedientes={expedientes}
+                    onUpdate={async (fd) => {
+                      'use server';
+                      const sb2 = supabaseAdmin();
+                      const id = Number(fd.get('id'));
+                      const payload = {
+                        titulo: String(fd.get('titulo') || ''),
+                        expediente_id: Number(fd.get('expediente_id')),
+                        horas_previstas: Number(fd.get('horas_previstas') || 0),
+                        horas_realizadas: Number(fd.get('horas_realizadas') || 0),
+                        estado: String(fd.get('estado') || ''),
+                        prioridad: String(fd.get('prioridad') || ''),
+                        vencimiento: String(fd.get('vencimiento') || '') || null,
+                      };
+                      const { error: eUp } = await sb2.from('tareas').update(payload).eq('id', id);
+                      if (eUp) throw new Error(eUp.message);
+                    }}
+                    onDelete={async (fd) => {
+                      'use server';
+                      const sb2 = supabaseAdmin();
+                      const id = Number(fd.get('id'));
+                      const { error: eDel } = await sb2.from('tareas').delete().eq('id', id);
+                      if (eDel) throw new Error(eDel.message);
+                    }}
+                  />
+                </td>
               </tr>
-            ) : (
-              tareas.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.titulo}</td>
-                  <td>{t.expedienteCodigo || '—'}</td>
-                  <td>{t.estado || '—'}</td>
-                  <td>{t.prioridad || '—'}</td>
-                  <td>{t.vencimiento ? new Date(t.vencimiento).toLocaleDateString('es-ES') : '—'}</td>
-                  <td><strong>{fmt(t.horas_realizadas)}</strong> / {fmt(t.horas_previstas)}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <TareaRowActions
-                      tarea={{
-                        id: t.id,
-                        titulo: t.titulo,
-                        expediente_id: t.expediente_id,
-                        estado: t.estado,
-                        prioridad: t.prioridad,
-                        horas_previstas: t.horas_previstas,
-                        horas_realizadas: t.horas_realizadas,
-                        vencimiento: t.vencimiento,
-                      } as any}
-                      expedientes={(expsMini || []) as ExpedienteMini[]}
-                    />
-                  </td>
-                </tr>
-              ))
+            ))}
+            {tareas.length === 0 && (
+              <tr>
+                <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 16 }}>
+                  No hay tareas con los filtros actuales.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
