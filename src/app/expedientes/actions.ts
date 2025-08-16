@@ -1,135 +1,70 @@
-'use server';
-
-import { revalidatePath } from 'next/cache';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabaseServer';
+import NewExpedienteButton from '@/components/NewExpedienteButton';
+import ExpedienteRowActions, { Expediente } from '@/components/ExpedienteRowActions';
+import { revalidatePath } from 'next/cache';
 
-// ---------- Tipos auxiliares ----------
-function toStr(v: FormDataEntryValue | null): string | null {
-  const s = (v ?? '').toString().trim();
-  return s.length ? s : null;
-}
-function toNum(v: FormDataEntryValue | null): number | null {
-  const s = (v ?? '').toString().trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-function toDateStr(v: FormDataEntryValue | null): string | null {
-  const s = (v ?? '').toString().trim();
-  return s.length ? s : null; // esperamos 'YYYY-MM-DD'
+async function fetchExpedientes(): Promise<Expediente[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('expedientes')
+    .select('id,codigo,proyecto,cliente,prioridad,estado,fin')
+    .order('fin', { ascending: true, nullsFirst: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as any;
 }
 
-// ========== EXPEDIENTES ==========
+export default async function Page() {
+  const expedientes = await fetchExpedientes();
 
-// Crear expediente
-export async function createExpedienteAction(fd: FormData) {
-  const supabase = createClient(); // ✅ sin cookies()
-
-  const payload = {
-    codigo: String(fd.get('codigo') || '').trim(),
-    proyecto: String(fd.get('proyecto') || '').trim(),
-    cliente: toStr(fd.get('cliente')),
-    inicio: toDateStr(fd.get('inicio')),
-    fin: toDateStr(fd.get('fin')),
-    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
-    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado' | null,
-    horas_previstas: toNum(fd.get('horas_previstas')),
-    horas_reales: toNum(fd.get('horas_reales')),
+  // callbacks opcionales para refrescar tras crear/editar/borrar
+  const onMutate = async () => {
+    'use server';
+    revalidatePath('/expedientes');
   };
 
-  const { error } = await supabase.from('expedientes').insert(payload);
-  if (error) return { ok: false, error: error.message };
+  return (
+    <main className="container">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="page-title">Expedientes</h1>
+        {/* Botón ➕ */}
+        <NewExpedienteButton onCreated={onMutate} />
+      </div>
 
-  revalidatePath('/expedientes');
-  return { ok: true };
-}
-
-// Actualizar expediente
-export async function updateExpedienteAction(id: number, fd: FormData) {
-  const supabase = createClient();
-
-  const payload = {
-    codigo: String(fd.get('codigo') || '').trim(),
-    proyecto: String(fd.get('proyecto') || '').trim(),
-    cliente: toStr(fd.get('cliente')),
-    inicio: toDateStr(fd.get('inicio')),
-    fin: toDateStr(fd.get('fin')),
-    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
-    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado' | null,
-    horas_previstas: toNum(fd.get('horas_previstas')),
-    horas_reales: toNum(fd.get('horas_reales')),
-  };
-
-  const { error } = await supabase.from('expedientes').update(payload).eq('id', id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath('/expedientes');
-  revalidatePath(`/expedientes/${encodeURIComponent(String(fd.get('codigo') || ''))}`);
-  return { ok: true };
-}
-
-// Borrar expediente
-export async function deleteExpedienteAction(id: number) {
-  const supabase = createClient();
-
-  const { error } = await supabase.from('expedientes').delete().eq('id', id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath('/expedientes');
-  return { ok: true };
-}
-
-// ========== TAREAS (vinculadas a expediente) ==========
-
-// Crear tarea
-export async function createTaskAction(expedienteId: number, fd: FormData) {
-  const supabase = createClient();
-
-  const payload = {
-    expediente_id: expedienteId,
-    titulo: String(fd.get('titulo') || '').trim(),
-    horas_previstas: toNum(fd.get('horas_previstas')),
-    horas_realizadas: toNum(fd.get('horas_realizadas')),
-    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'Completada' | null,
-    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
-    vencimiento: toDateStr(fd.get('vencimiento')),
-  };
-
-  const { error } = await supabase.from('tareas').insert(payload);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath(`/expedientes/${encodeURIComponent(String(fd.get('expediente_codigo') || ''))}`);
-  revalidatePath('/tareas');
-  return { ok: true };
-}
-
-// Actualizar tarea
-export async function updateTaskAction(id: number, fd: FormData) {
-  const supabase = createClient();
-
-  const payload = {
-    titulo: String(fd.get('titulo') || '').trim(),
-    horas_previstas: toNum(fd.get('horas_previstas')),
-    horas_realizadas: toNum(fd.get('horas_realizadas')),
-    estado: toStr(fd.get('estado')) as 'Pendiente' | 'En curso' | 'Completada' | null,
-    prioridad: toStr(fd.get('prioridad')) as 'Baja' | 'Media' | 'Alta' | null,
-    vencimiento: toDateStr(fd.get('vencimiento')),
-  };
-
-  const { error } = await supabase.from('tareas').update(payload).eq('id', id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath('/tareas');
-  return { ok: true };
-}
-
-// Borrar tarea
-export async function deleteTaskAction(id: number) {
-  const supabase = createClient();
-
-  const { error } = await supabase.from('tareas').delete().eq('id', id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath('/tareas');
-  return { ok: true };
+      <div className="table-card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Proyecto</th>
+              <th>Cliente</th>
+              <th>Fin</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th style={{ width: 100, textAlign: 'center' }}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {expedientes.map((e) => (
+              <tr key={e.id}>
+                <td>
+                  <Link href={`/expedientes/${encodeURIComponent(e.codigo)}`} className="link">
+                    {e.codigo}
+                  </Link>
+                </td>
+                <td>{e.proyecto ?? '—'}</td>
+                <td>{e.cliente ?? '—'}</td>
+                <td>{e.fin ?? '—'}</td>
+                <td>{e.prioridad ?? '—'}</td>
+                <td>{e.estado ?? '—'}</td>
+                <td>
+                  <ExpedienteRowActions expediente={e} onUpdate={onMutate} onDelete={onMutate} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
 }
