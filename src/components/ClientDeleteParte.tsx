@@ -1,40 +1,22 @@
 // src/components/ClientDeleteParte.tsx
 'use client';
 
-import { useState } from 'react';
-import ConfirmDialog from '@/components/ConfirmDialog';
+type Props = {
+  id: number;
+  onDelete: (id: number) => Promise<{ ok: boolean; error?: string } | void>;
+};
 
-export default function ClientDeleteParte({ id }: { id: number }) {
-  const [open, setOpen] = useState(false);
-
+export default function ClientDeleteParte({ id, onDelete }: Props) {
   return (
-    <>
-      <button
-        type="button"
-        aria-label="Borrar parte"
-        title="Borrar parte"
-        className="btn-icon"
-        onClick={() => setOpen(true)}
-      >
-        🗑️
-      </button>
-
-      <ConfirmDialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Borrar parte"
-        message="¿Seguro que deseas borrar este parte?"
-        confirmText="Borrar"
-        cancelText="Cancelar"
-        onConfirm={async () => {
-          try {
-            // Igual que en tareas: aquí puedes llamar a una server action o a un endpoint /api
-            console.warn('DeleteParte sin server action ligada. Implementa la acción.');
-          } finally {
-            setOpen(false);
-          }
-        }}
-      />
-    </>
+    <button
+      className="icon-btn"
+      title="Borrar parte"
+      onClick={async () => {
+        if (!confirm('¿Borrar este parte?')) return;
+        await onDelete(id);
+      }}
+    >
+      🗑️
+    </button>
   );
 }
