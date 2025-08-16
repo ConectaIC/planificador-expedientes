@@ -1,123 +1,128 @@
 // src/app/partes/page.tsx
 import { createClient } from '@/lib/supabaseServer';
+import ClientCreateParte from '@/components/ClientCreateParte';
+import ClientDeleteParte from '@/components/ClientDeleteParte';
 
 type Parte = {
   id: number;
-  fecha: string | null;
-  hora_inicio: string | null;
-  hora_fin: string | null;
+  fecha: string;
+  hora_inicio: string;
+  hora_fin: string;
+  horas: number;
   comentario: string | null;
   expediente_id: number | null;
   tarea_id: number | null;
-  expedientes: { id: number; codigo: string }[]; // via join
-  tareas: { id: number; titulo: string }[];       // via join
 };
 
 type ExpedienteRef = { id: number; codigo: string };
 type TareaRef = { id: number; titulo: string };
 
-export const revalidate = 0; // evitar cache en build
-
-export default async function PagePartes() {
+async function fetchData() {
   const supabase = createClient();
 
-  // Partes + joins mínimos para mostrar referencias
-  const { data: raw, error } = await supabase
+  const { data: partes, error: e1 } = await supabase
     .from('partes')
-    .select(`
-      id, fecha, hora_inicio, hora_fin, comentario, expediente_id, tarea_id,
-      expedientes ( id, codigo ),
-      tareas ( id, titulo )
-    `)
+    .select('id,fecha,hora_inicio,hora_fin,horas,comentario,expediente_id,tarea_id')
     .order('fecha', { ascending: false });
 
-  if (error) {
-    return (
-      <main className="container">
-        <h1>Partes</h1>
-        <p className="text-danger">Error al cargar partes: {error.message}</p>
-      </main>
-    );
-  }
+  if (e1) return { error: e1.message } as const;
 
-  const partes: Parte[] = (raw || []) as any;
-
-  // Opciones para selects de creación (solo expedientes activos y tareas visibles)
-  const { data: exps } = await supabase
+  const { data: expedientes, error: e2 } = await supabase
     .from('expedientes')
     .select('id,codigo')
-    .neq('estado', 'Cerrado')
     .order('codigo', { ascending: true });
 
-  const { data: tasks } = await supabase
+  if (e2) return { error: e2.message } as const;
+
+  const { data: tareas, error: e3 } = await supabase
     .from('tareas')
     .select('id,titulo')
     .order('titulo', { ascending: true });
 
-  const expedientesOpts: ExpedienteRef[] = (exps || []) as any;
-  const tareasOpts: TareaRef[] = (tasks || []) as any;
+  if (e3) return { error: e3.message } as const;
+
+  return {
+    partes: (partes || []) as Parte[],
+    expedientes: (expedientes || []) as ExpedienteRef[],
+    tareas: (tareas || []) as TareaRef[],
+  } as const;
+}
+
+// ---- Server Actions locales (simples) ----
+import { revalidatePath } from 'next/cache';
+async function createParteAction(fd: FormData) {
+  'use server';
+  const supabase = createClient();
+  const payload = {
+    fecha: (fd.get('fecha') || '').toString(),
+    hora_inicio: (fd.get('hora_inicio') || '').toString(),
+    hora_fin: (fd.get('hora_fin') || '').toString(),
+    horas: Number(fd.get('horas') || 0),
+    comentario: (fd.get('comentario') || '').toString().trim() || null,
+    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
+    tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
+  };
+  const { error } = await supabase.from('partes').insert(payload);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/partes');
+  return { ok: true };
+}
+
+async function deleteParteAction(id: number) {
+  'use server';
+  const supabase = createClient();
+  const { error } = await supabase.from('partes').delete().eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/partes');
+  return { ok: true };
+}
+
+export default async function PartesPage() {
+  const res = await fetchData();
+  if ('error' in res) {
+    return <main className="container"><p className="error">Error al cargar partes: {res.error}</p></main>;
+  }
+
+  const { partes, expedientes, tareas } = res;
 
   return (
     <main className="container">
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h1>Partes</h1>
-        {/* botón crear (emoji solo) */}
-        {/* @ts-expect-error Server Component wraps Client Component */}
-        <ClientParteButtons mode="create" expedientes={expedientesOpts} tareas={tareasOpts} onDone={() => { /* no-op en server */ }} />
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <h2>Partes</h2>
+        <ClientCreateParte expedientes={expedientes} tareas={tareas} onCreate={createParteAction} />
       </div>
 
-      <div className="table-wrapper">
+      <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Inicio</th>
               <th>Fin</th>
+              <th style={{ textAlign: 'right' }}>Horas</th>
+              <th>Comentario</th>
               <th>Expediente</th>
               <th>Tarea</th>
-              <th>Comentario</th>
               <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {partes.map((p) => {
-              const ex = (p.expedientes && p.expedientes[0]) ? p.expedientes[0] : null;
-              const ta = (p.tareas && p.tareas[0]) ? p.tareas[0] : null;
-              return (
-                <tr key={p.id}>
-                  <td>{p.fecha ?? '—'}</td>
-                  <td>{p.hora_inicio ?? '—'}</td>
-                  <td>{p.hora_fin ?? '—'}</td>
-                  <td>{ex ? <a className="link" href={`/expedientes/${encodeURIComponent(ex.codigo)}`}>{ex.codigo}</a> : '—'}</td>
-                  <td>{ta ? ta.titulo : '—'}</td>
-                  <td>{p.comentario ?? '—'}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    {/* @ts-expect-error Server Component wraps Client Component */}
-                    <ClientParteButtons
-                      mode="edit"
-                      parte={p}
-                      expedientes={expedientesOpts}
-                      tareas={tareasOpts}
-                      onDone={() => {}}
-                    />
-                    {/* separador mínimo */}
-                    <span style={{ display: 'inline-block', width: 8 }} />
-                    {/* @ts-expect-error Server Component wraps Client Component */}
-                    <ClientParteButtons
-                      mode="delete"
-                      parte={p}
-                      onDone={() => {}}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-            {partes.length === 0 && (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>
-                  No hay partes.
+            {partes.map(p => (
+              <tr key={p.id}>
+                <td>{p.fecha}</td>
+                <td>{p.hora_inicio}</td>
+                <td>{p.hora_fin}</td>
+                <td style={{ textAlign: 'right' }}>{p.horas.toFixed(1)}</td>
+                <td>{p.comentario ?? '—'}</td>
+                <td>{expedientes.find(e => e.id === p.expediente_id)?.codigo ?? '—'}</td>
+                <td>{tareas.find(t => t.id === p.tarea_id)?.titulo ?? '—'}</td>
+                <td style={{ textAlign: 'center' }}>
+                  <ClientDeleteParte id={p.id} onDelete={deleteParteAction} />
                 </td>
               </tr>
+            ))}
+            {partes.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign: 'center', opacity: .7 }}>No hay partes</td></tr>
             )}
           </tbody>
         </table>
@@ -125,7 +130,3 @@ export default async function PagePartes() {
     </main>
   );
 }
-
-// Import tardío del client component para que Next no intente convertir la página a cliente
-// (el comentario @ts-expect-error encima de su uso es a propósito).
-import ClientParteButtons from '@/components/ClientParteButtons';
