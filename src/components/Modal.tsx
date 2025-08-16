@@ -3,50 +3,33 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import React from 'react';
 
 export type ModalProps = {
   open: boolean;
   onClose: () => void;
   title?: string;
-  children?: React.ReactNode;
-  /** Clase para limitar el ancho del cuadro (ej. "max-w-md", "max-w-xl"). */
-  widthClass?: string;
+  widthClass?: string; // e.g., "max-w-xl"
+  children: React.ReactNode;
 };
 
-export default function Modal({ open, onClose, title, children, widthClass }: ModalProps) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (open) document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
-
+export default function Modal({ open, onClose, title, widthClass = 'max-w-xl', children }: ModalProps) {
   if (!open) return null;
 
+  const onBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.35)', padding: 12 }}
-      onClick={onClose}
-    >
-      <div
-        className={`w-full ${widthClass ?? 'max-w-lg'}`}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--cic-bg-card, #fff)',
-          color: 'var(--cic-text, #111)',
-          border: '1px solid var(--cic-border, #e5e5e5)',
-          borderRadius: 12,
-          padding: 16,
-          boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
-        }}
-      >
-        {title ? <h3 style={{ marginBottom: 12 }}>{title}</h3> : null}
-        {children}
+    <div className="modal-backdrop" onMouseDown={onBackdrop}>
+      <div className={`modal-panel ${widthClass}`} role="dialog" aria-modal="true">
+        <div className="modal-header">
+          <div className="modal-title">{title || ''}</div>
+          <button className="icon-btn" aria-label="Cerrar" onClick={onClose}>
+            <span className="icon-emoji">✖️</span>
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
       </div>
     </div>
   );
