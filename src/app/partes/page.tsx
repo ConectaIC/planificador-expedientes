@@ -1,161 +1,120 @@
 // src/app/partes/page.tsx
-// ⚠️ IMPORTANTE: ESTE ARCHIVO NO LLEVA 'use client'
-
-import Link from 'next/link';
-
-// ⬇️ Ajusta esta ruta a tu helper real de Supabase en el servidor.
-// Por ejemplo: '@/lib/supabaseServer' o '@/lib/supabase' o '@/utils/supabase/server'
 import { createClient } from '@/lib/supabaseServer';
 
-import { CreateParteButton, EditParteButton, DeleteParteButton } from '@/components/ClientParteButtons';
-
-// Tipos mínimos para referencias y filas
-type ExpedienteRef = { id: number; codigo: string };
-type TareaRef = { id: number; titulo: string };
-
-type ParteRow = {
+type Parte = {
   id: number;
   fecha: string | null;
   hora_inicio: string | null;
   hora_fin: string | null;
-  horas: number | null;
   comentario: string | null;
-  expediente_id: number;
-  expediente_codigo?: string | null; // si tu vista lo trae
+  expediente_id: number | null;
   tarea_id: number | null;
-  tarea_titulo?: string | null; // si tu vista lo trae
+  expedientes: { id: number; codigo: string }[]; // via join
+  tareas: { id: number; titulo: string }[];       // via join
 };
 
-export const revalidate = 0; // opcional: evita cache en producción para ver cambios al instante
+type ExpedienteRef = { id: number; codigo: string };
+type TareaRef = { id: number; titulo: string };
 
-export default async function PartesPage() {
+export const revalidate = 0; // evitar cache en build
+
+export default async function PagePartes() {
   const supabase = createClient();
 
-  // 1) Referencias para selects de los modales (expedientes, tareas)
-  const { data: expedientesRefs, error: expErr } = await supabase
-    .from('expedientes')
-    .select('id,codigo')
-    .order('codigo', { ascending: true });
-
-  const { data: tareasRefs, error: tarErr } = await supabase
-    .from('tareas')
-    .select('id,titulo')
-    .order('titulo', { ascending: true });
-
-  // 2) Carga de partes. Ideal: usar una vista 'v_partes' que ya una tablas y calcule 'horas'
-  //    Si no tienes la vista, cambia por la tabla 'partes' y ajusta columnas (hora_inicio, hora_fin, etc.)
-  const { data: partesData, error: partesErr } = await supabase
-    .from('v_partes')
-    .select('*')
+  // Partes + joins mínimos para mostrar referencias
+  const { data: raw, error } = await supabase
+    .from('partes')
+    .select(`
+      id, fecha, hora_inicio, hora_fin, comentario, expediente_id, tarea_id,
+      expedientes ( id, codigo ),
+      tareas ( id, titulo )
+    `)
     .order('fecha', { ascending: false });
 
-  if (expErr) console.error('[partes] Error expedientes:', expErr.message);
-  if (tarErr) console.error('[partes] Error tareas:', tarErr.message);
-  if (partesErr) {
-    // Mostramos error de forma amable en UI
+  if (error) {
     return (
       <main className="container">
-        <div className="card">
-          <h2>Partes</h2>
-          <p style={{ color: '#b91c1c' }}>
-            Error al cargar partes: {partesErr.message}
-          </p>
-        </div>
+        <h1>Partes</h1>
+        <p className="text-danger">Error al cargar partes: {error.message}</p>
       </main>
     );
   }
 
-  const expedientes = (expedientesRefs || []) as ExpedienteRef[];
-  const tareas = (tareasRefs || []) as TareaRef[];
-  const partes = (partesData || []) as ParteRow[];
+  const partes: Parte[] = (raw || []) as any;
 
-  // Formateos simples
-  const fmt = (v: any) => (v === null || v === undefined || v === '' ? '—' : v);
-  const fmtH = (n: any) =>
-    Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—';
+  // Opciones para selects de creación (solo expedientes activos y tareas visibles)
+  const { data: exps } = await supabase
+    .from('expedientes')
+    .select('id,codigo')
+    .neq('estado', 'Cerrado')
+    .order('codigo', { ascending: true });
+
+  const { data: tasks } = await supabase
+    .from('tareas')
+    .select('id,titulo')
+    .order('titulo', { ascending: true });
+
+  const expedientesOpts: ExpedienteRef[] = (exps || []) as any;
+  const tareasOpts: TareaRef[] = (tasks || []) as any;
 
   return (
     <main className="container">
-      {/* Cabecera con título y botón (emoji) para NUEVO parte (abre modal desde componente cliente) */}
-      <div
-        className="card"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <h2>Partes</h2>
-        <CreateParteButton expedientes={expedientes} tareas={tareas} />
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h1>Partes</h1>
+        {/* botón crear (emoji solo) */}
+        {/* @ts-expect-error Server Component wraps Client Component */}
+        <ClientParteButtons mode="create" expedientes={expedientesOpts} tareas={tareasOpts} onDone={() => { /* no-op en server */ }} />
       </div>
 
-      <div className="card">
+      <div className="table-wrapper">
         <table className="table">
           <thead>
             <tr>
               <th>Fecha</th>
-              <th>Expediente</th>
-              <th>Tarea</th>
               <th>Inicio</th>
               <th>Fin</th>
-              <th>Horas</th>
+              <th>Expediente</th>
+              <th>Tarea</th>
               <th>Comentario</th>
-              <th style={{ textAlign: 'center', width: 112 }}>Acciones</th>
+              <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {partes.map((p) => (
-              <tr key={p.id}>
-                <td>{fmt(p.fecha)}</td>
-
-                <td>
-                  {/* Si tu vista trae `expediente_codigo`, lo mostramos como enlace a su detalle */}
-                  {p.expediente_codigo ? (
-                    <Link
-                      className="link"
-                      href={`/expedientes/${encodeURIComponent(p.expediente_codigo)}`}
-                    >
-                      {p.expediente_codigo}
-                    </Link>
-                  ) : (
-                    fmt(p.expediente_id)
-                  )}
-                </td>
-
-                <td>{fmt(p.tarea_titulo)}</td>
-                <td>{fmt(p.hora_inicio)}</td>
-                <td>{fmt(p.hora_fin)}</td>
-                <td>{fmtH(p.horas)}</td>
-                <td>{fmt(p.comentario)}</td>
-
-                <td style={{ textAlign: 'center' }}>
-                  <div
-                    className="flex gap-2 items-center"
-                    style={{ justifyContent: 'center' }}
-                  >
-                    <EditParteButton
-                      parte={{
-                        id: p.id,
-                        fecha: p.fecha,
-                        hora_inicio: p.hora_inicio,
-                        hora_fin: p.hora_fin,
-                        comentario: p.comentario,
-                        expediente_id: p.expediente_id,
-                        tarea_id: p.tarea_id,
-                      }}
-                      expedientes={expedientes}
-                      tareas={tareas}
+            {partes.map((p) => {
+              const ex = (p.expedientes && p.expedientes[0]) ? p.expedientes[0] : null;
+              const ta = (p.tareas && p.tareas[0]) ? p.tareas[0] : null;
+              return (
+                <tr key={p.id}>
+                  <td>{p.fecha ?? '—'}</td>
+                  <td>{p.hora_inicio ?? '—'}</td>
+                  <td>{p.hora_fin ?? '—'}</td>
+                  <td>{ex ? <a className="link" href={`/expedientes/${encodeURIComponent(ex.codigo)}`}>{ex.codigo}</a> : '—'}</td>
+                  <td>{ta ? ta.titulo : '—'}</td>
+                  <td>{p.comentario ?? '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    {/* @ts-expect-error Server Component wraps Client Component */}
+                    <ClientParteButtons
+                      mode="edit"
+                      parte={p}
+                      expedientes={expedientesOpts}
+                      tareas={tareasOpts}
+                      onDone={() => {}}
                     />
-                    <DeleteParteButton id={p.id} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-
-            {(!partes || partes.length === 0) && (
+                    {/* separador mínimo */}
+                    <span style={{ display: 'inline-block', width: 8 }} />
+                    {/* @ts-expect-error Server Component wraps Client Component */}
+                    <ClientParteButtons
+                      mode="delete"
+                      parte={p}
+                      onDone={() => {}}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+            {partes.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>
                   No hay partes.
                 </td>
               </tr>
@@ -166,3 +125,7 @@ export default async function PartesPage() {
     </main>
   );
 }
+
+// Import tardío del client component para que Next no intente convertir la página a cliente
+// (el comentario @ts-expect-error encima de su uso es a propósito).
+import ClientParteButtons from '@/components/ClientParteButtons';
