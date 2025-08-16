@@ -1,219 +1,222 @@
 // src/app/expedientes/page.tsx
 // Tipo: Server Component
 
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import FiltrosExepdientes from '../../components/FiltrosExepdientes';
-import NewExpedienteModal from '../../components/NewExpedienteModal';
-import ExpedienteRowActions from '../../components/ExpedienteRowActions';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import NewExpedienteModal, { ExpedienteInput } from '@/components/NewExpedienteModal';
+
+type Prioridad = 'Baja' | 'Media' | 'Alta';
+type EstadoExp = 'Pendiente' | 'En curso' | 'En supervisión' | 'Entregado' | 'Cerrado';
 
 type Expediente = {
   id: number;
   codigo: string;
-  proyecto: string | null;
-  cliente: string | null;
+  proyecto: string;
+  cliente: string;
   inicio: string | null;
   fin: string | null;
-  prioridad: string | null;   // Baja | Media | Alta
-  estado: string | null;      // Pendiente | En curso | En supervisión | Entregado | Cerrado
+  prioridad: Prioridad | null;
+  estado: EstadoExp | null;
   horas_previstas: number | null;
   horas_reales: number | null;
 };
 
-function fmt(n: any) {
-  const v = Number(n);
-  return Number.isFinite(v) ? v.toFixed(2) : '—';
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Server Actions (mutaciones) — se pasan como props a los componentes cliente
-// ───────────────────────────────────────────────────────────────────────────────
-export async function createExpediente(formData: FormData) {
-  'use server';
-  const sb = supabaseAdmin();
-  const payload = {
-    codigo: String(formData.get('codigo') || '').trim(),
-    proyecto: String(formData.get('proyecto') || '').trim() || null,
-    cliente: String(formData.get('cliente') || '').trim() || null,
-    inicio: String(formData.get('inicio') || '') || null,
-    fin: String(formData.get('fin') || '') || null,
-    prioridad: String(formData.get('prioridad') || '') || null,
-    estado: String(formData.get('estado') || '') || null,
-    horas_previstas: Number(formData.get('horas_previstas') || 0) || 0,
-    horas_reales: Number(formData.get('horas_reales') || 0) || 0,
-  };
+export default function ExpedientesPage() {
+  // datos
+  const [rows, setRows] = useState<Expediente[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const { error } = await sb.from('expedientes').insert(payload);
-  if (error) throw new Error(error.message);
-}
+  // filtros
+  const [q, setQ] = useState('');
+  const [estado, setEstado] = useState<'todos' | EstadoExp>('todos');
+  const [prioridad, setPrioridad] = useState<'todas' | Prioridad>('todas');
+  const [orden, setOrden] = useState<'fin_asc' | 'fin_desc' | 'codigo_asc' | 'codigo_desc' | 'horas_asc' | 'horas_desc'>('fin_asc');
 
-export async function updateExpediente(formData: FormData) {
-  'use server';
-  const sb = supabaseAdmin();
-  const id = Number(formData.get('id'));
-  if (!id) throw new Error('ID de expediente no válido');
+  // modal crear
+  const [openNew, setOpenNew] = useState(false);
 
-  const payload = {
-    codigo: String(formData.get('codigo') || '').trim(),
-    proyecto: String(formData.get('proyecto') || '').trim() || null,
-    cliente: String(formData.get('cliente') || '').trim() || null,
-    inicio: String(formData.get('inicio') || '') || null,
-    fin: String(formData.get('fin') || '') || null,
-    prioridad: String(formData.get('prioridad') || '') || null,
-    estado: String(formData.get('estado') || '') || null,
-    horas_previstas: Number(formData.get('horas_previstas') || 0) || 0,
-    horas_reales: Number(formData.get('horas_reales') || 0) || 0,
-  };
-
-  const { error } = await sb.from('expedientes').update(payload).eq('id', id);
-  if (error) throw new Error(error.message);
-}
-
-export async function deleteExpediente(formData: FormData) {
-  'use server';
-  const sb = supabaseAdmin();
-  const id = Number(formData.get('id'));
-  if (!id) throw new Error('ID de expediente no válido');
-
-  const { error } = await sb.from('expedientes').delete().eq('id', id);
-  if (error) throw new Error(error.message);
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
-  const q = (k: string, def = '') => {
-    const v = searchParams?.[k];
-    return (Array.isArray(v) ? v[0] : v) ?? def;
-  };
-
-  const texto = String(q('q')).trim();
-  const estado = String(q('estado')).trim();
-  const prioridad = String(q('prioridad')).trim();
-  const ordenar = (String(q('orden')) || 'inicio_desc').trim();
-
-  const sb = supabaseAdmin();
-
-  let query = sb
-    .from('expedientes')
-    .select('id,codigo,proyecto,cliente,inicio,fin,prioridad,estado,horas_previstas,horas_reales');
-
-  if (texto) {
-    // búsqueda por código, proyecto o cliente
-    query = query.or(
-      `codigo.ilike.%${texto}%,proyecto.ilike.%${texto}%,cliente.ilike.%${texto}%`
-    );
-  }
-  if (estado) query = query.eq('estado', estado);
-  if (prioridad) query = query.eq('prioridad', prioridad);
-
-  const [campo, dir] = (() => {
-    switch (ordenar) {
-      case 'inicio_asc':
-        return ['inicio', { ascending: true as const }];
-      case 'inicio_desc':
-        return ['inicio', { ascending: false as const }];
-      case 'horas_desc':
-        return ['horas_reales', { ascending: false as const }];
-      case 'horas_asc':
-        return ['horas_reales', { ascending: true as const }];
-      default:
-        return ['inicio', { ascending: false as const }];
+  async function fetchData() {
+    try {
+      setLoading(true);
+      setErr(null);
+      const { data, error } = await supabase
+        .from('expedientes')
+        .select('id,codigo,proyecto,cliente,inicio,fin,prioridad,estado,horas_previstas,horas_reales')
+        .order('fin', { ascending: true });
+      if (error) throw error;
+      setRows((data as any) ?? []);
+    } catch (e: any) {
+      setErr(e?.message ?? 'No se pudieron cargar los expedientes');
+    } finally {
+      setLoading(false);
     }
-  })();
-
-  const { data, error } = await query.order(campo, dir);
-  if (error) {
-    return (
-      <main className="container">
-        <h1>Expedientes</h1>
-        <div className="error">Error al cargar expedientes: {error.message}</div>
-      </main>
-    );
   }
 
-  const expedientes: Expediente[] = (data || []).map((e: any) => ({
-    id: Number(e.id),
-    codigo: String(e.codigo),
-    proyecto: e.proyecto ?? null,
-    cliente: e.cliente ?? null,
-    inicio: e.inicio ?? null,
-    fin: e.fin ?? null,
-    prioridad: e.prioridad ?? null,
-    estado: e.estado ?? null,
-    horas_previstas: e.horas_previstas ?? null,
-    horas_reales: e.horas_reales ?? null,
-  }));
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const filtrados = useMemo(() => {
+    let list = rows.slice();
+    const qnorm = q.trim().toLowerCase();
+    if (qnorm) {
+      list = list.filter(
+        (r) =>
+          r.codigo?.toLowerCase().includes(qnorm) ||
+          r.proyecto?.toLowerCase().includes(qnorm) ||
+          r.cliente?.toLowerCase().includes(qnorm)
+      );
+    }
+    if (estado !== 'todos') list = list.filter((r) => r.estado === estado);
+    if (prioridad !== 'todas') list = list.filter((r) => r.prioridad === prioridad);
+
+    switch (orden) {
+      case 'fin_desc':
+        list.sort((a, b) => (b.fin || '').localeCompare(a.fin || ''));
+        break;
+      case 'codigo_asc':
+        list.sort((a, b) => a.codigo.localeCompare(b.codigo));
+        break;
+      case 'codigo_desc':
+        list.sort((a, b) => b.codigo.localeCompare(a.codigo));
+        break;
+      case 'horas_asc':
+        list.sort(
+          (a, b) => (a.horas_reales ?? 0) - (b.horas_reales ?? 0)
+        );
+        break;
+      case 'horas_desc':
+        list.sort(
+          (a, b) => (b.horas_reales ?? 0) - (a.horas_reales ?? 0)
+        );
+        break;
+      default: // fin_asc
+        list.sort((a, b) => (a.fin || '').localeCompare(b.fin || ''));
+    }
+    return list;
+  }, [rows, q, estado, prioridad, orden]);
+
+  async function handleCreate(payload: ExpedienteInput) {
+    const { error } = await supabase.from('expedientes').insert({
+      codigo: payload.codigo,
+      proyecto: payload.proyecto,
+      cliente: payload.cliente,
+      inicio: payload.inicio || null,
+      fin: payload.fin || null,
+      prioridad: payload.prioridad || null,
+      estado: payload.estado || null,
+    });
+    if (error) throw error;
+    await fetchData();
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('¿Borrar expediente y sus relaciones?')) return;
+    const { error } = await supabase.from('expedientes').delete().eq('id', id);
+    if (error) alert(error.message);
+    await fetchData();
+  }
 
   return (
     <main className="container">
-      <div
-        className="card"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
-      >
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <h1>Expedientes</h1>
-
-        {/* Botón ➕ modal de alta (no navega) */}
-        <NewExpedienteModal onCreate={createExpediente} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="icon-btn" aria-label="Nuevo expediente" title="Nuevo expediente" onClick={() => setOpenNew(true)}>
+            <span className="icon-emoji">➕</span>
+          </button>
+        </div>
       </div>
 
-      <FiltrosExepdientes />
+      <div className="filters">
+        <input className="inp" placeholder="Buscar por código, proyecto o cliente" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="inp" value={estado} onChange={(e) => setEstado(e.target.value as any)}>
+          <option value="todos">Estado: todos</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="En curso">En curso</option>
+          <option value="En supervisión">En supervisión</option>
+          <option value="Entregado">Entregado</option>
+          <option value="Cerrado">Cerrado</option>
+        </select>
+        <select className="inp" value={prioridad} onChange={(e) => setPrioridad(e.target.value as any)}>
+          <option value="todas">Prioridad: todas</option>
+          <option value="Baja">Baja</option>
+          <option value="Media">Media</option>
+          <option value="Alta">Alta</option>
+        </select>
+        <select className="inp" value={orden} onChange={(e) => setOrden(e.target.value as any)}>
+          <option value="fin_asc">Orden: Fin ↑</option>
+          <option value="fin_desc">Orden: Fin ↓</option>
+          <option value="codigo_asc">Orden: Código ↑</option>
+          <option value="codigo_desc">Orden: Código ↓</option>
+          <option value="horas_asc">Orden: Horas ↑</option>
+          <option value="horas_desc">Orden: Horas ↓</option>
+        </select>
+      </div>
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Código</th>
-              <th>Proyecto</th>
-              <th>Cliente</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Prioridad</th>
-              <th>Estado</th>
-              <th>Horas (real / prev.)</th>
-              <th style={{ textAlign: 'center' }}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expedientes.length === 0 ? (
+      {err && <div className="alert error">Error al cargar expedientes: {err}</div>}
+      {loading ? (
+        <div className="muted">Cargando…</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center' }}>
-                  No hay expedientes que cumplan el filtro.
-                </td>
+                <th>Código</th>
+                <th>Proyecto</th>
+                <th>Cliente</th>
+                <th>Inicio</th>
+                <th>Fin</th>
+                <th>Prioridad</th>
+                <th>Estado</th>
+                <th>Horas (reales)</th>
+                <th style={{ width: 90, textAlign: 'center' }}>Acciones</th>
               </tr>
-            ) : (
-              expedientes.map((e) => (
+            </thead>
+            <tbody>
+              {filtrados.map((e) => (
                 <tr key={e.id}>
                   <td>
-                    <a className="btn-link" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>
-                      {e.codigo}
-                    </a>
+                    <a className="link" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>{e.codigo}</a>
                   </td>
-                  <td>{e.proyecto || '—'}</td>
-                  <td>{e.cliente || '—'}</td>
-                  <td>{e.inicio ? new Date(e.inicio).toLocaleDateString('es-ES') : '—'}</td>
-                  <td>{e.fin ? new Date(e.fin).toLocaleDateString('es-ES') : '—'}</td>
-                  <td>{e.prioridad || '—'}</td>
-                  <td>{e.estado || '—'}</td>
-                  <td>
-                    <strong>{fmt(e.horas_reales)}</strong> / {fmt(e.horas_previstas)}
-                  </td>
+                  <td>{e.proyecto}</td>
+                  <td>{e.cliente}</td>
+                  <td>{e.inicio ?? '—'}</td>
+                  <td>{e.fin ?? '—'}</td>
+                  <td>{e.prioridad ?? '—'}</td>
+                  <td>{e.estado ?? '—'}</td>
+                  <td>{(e.horas_reales ?? 0).toFixed(2)}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <ExpedienteRowActions
-                      expediente={e}
-                      onUpdate={updateExpediente}
-                      onDelete={deleteExpediente}
-                    />
+                    <a className="icon-btn" aria-label="Editar" title="Editar" href={`/expedientes/${encodeURIComponent(e.codigo)}`}>
+                      <span className="icon-emoji">✏️</span>
+                    </a>
+                    <button className="icon-btn" aria-label="Borrar" title="Borrar" onClick={() => handleDelete(e.id)}>
+                      <span className="icon-emoji">🗑️</span>
+                    </button>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+              {filtrados.length === 0 && (
+                <tr><td colSpan={9} className="muted">Sin resultados</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <NewExpedienteModal
+        open={openNew}
+        onClose={() => setOpenNew(false)}
+        onCreate={handleCreate}
+      />
     </main>
   );
 }
