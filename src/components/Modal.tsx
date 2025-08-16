@@ -1,35 +1,26 @@
 // src/components/Modal.tsx
+// Tipo: Client Component
+
 'use client';
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
 export type ModalProps = {
   open: boolean;
   onClose: () => void;
   title?: string;
-  children: React.ReactNode;
-  /**
-   * Ancho opcional heredado de componentes antiguos.
-   * Ejemplos: "max-w-md", "max-w-lg". Se aplica al contenedor interno.
-   */
+  children?: React.ReactNode;
+  /** Clase para limitar el ancho del cuadro (ej. "max-w-md", "max-w-xl"). */
   widthClass?: string;
 };
 
-export default function Modal({
-  open,
-  onClose,
-  title,
-  children,
-  widthClass,
-}: ModalProps) {
-  // Cerrar con ESC
+export default function Modal({ open, onClose, title, children, widthClass }: ModalProps) {
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    if (open) document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
   if (!open) return null;
@@ -39,43 +30,23 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.35)', padding: 12 }}
+      onClick={onClose}
     >
-      {/* Fondo */}
       <div
-        className="absolute inset-0 bg-black/30"
-        onClick={onClose}
-      />
-
-      {/* Contenedor del modal */}
-      <div
-        className={[
-          // Ancho por defecto + opcional
-          'relative z-10 w-full',
-          widthClass ? widthClass : 'max-w-lg',
-          // Caja
-          'bg-white rounded-2xl border border-[var(--cic-border,#e5e5e5)] shadow-xl',
-          'p-4',
-        ].join(' ')}
+        className={`w-full ${widthClass ?? 'max-w-lg'}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--cic-bg-card, #fff)',
+          color: 'var(--cic-text, #111)',
+          border: '1px solid var(--cic-border, #e5e5e5)',
+          borderRadius: 12,
+          padding: 16,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+        }}
       >
-        {/* Cabecera */}
-        {(title ?? '').trim().length > 0 && (
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-[var(--cic-text,#222)]">
-              {title}
-            </h3>
-            <button
-              type="button"
-              aria-label="Cerrar"
-              onClick={onClose}
-              className="rounded-lg px-2 py-1 border hover:bg-gray-50"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Contenido */}
-        <div>{children}</div>
+        {title ? <h3 style={{ marginBottom: 12 }}>{title}</h3> : null}
+        {children}
       </div>
     </div>
   );
