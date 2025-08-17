@@ -3,7 +3,6 @@
 
 import { useState } from 'react';
 import EditParteModal from '@/components/EditParteModal';
-import DeleteParteDialog from '@/components/DeleteParteDialog';
 
 type ExpedienteRef = { id: number; codigo: string; proyecto?: string | null };
 type TareaRef = { id: number; titulo: string; expediente_id: number };
@@ -17,7 +16,6 @@ type Props = {
 export default function ClientParteButtons({ expedientes, tareas, onCreate }: Props) {
   const [open, setOpen] = useState(false);
 
-  // Objeto por defecto que cumple con el DTO esperado por el modal
   const DEFAULT_PARTE = {
     id: 0,
     expediente_id: null as number | null,
