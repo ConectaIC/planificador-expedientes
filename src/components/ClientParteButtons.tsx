@@ -1,58 +1,62 @@
-// src/components/ClientParteButtons.tsx
 'use client';
 
 import { useState } from 'react';
-import EditParteModal from '@/components/EditParteModal';
-
-type ExpedienteRef = { id: number; codigo: string; proyecto?: string | null };
-type TareaRef = { id: number; titulo: string; expediente_id: number };
+import EditParteModal, { type EditPartePayload } from '@/components/EditParteModal';
+import type { ExpedienteRef, TareaRef, ParteDTO } from '@/types';
+import { createParteAction } from '@/app/partes/actions';
 
 type Props = {
   expedientes: ExpedienteRef[];
   tareas: TareaRef[];
-  onCreate?: (payload: any) => Promise<void> | void;
+  onCreated?: () => void; // opcional: refrescar lista, toast, etc.
 };
 
-export default function ClientParteButtons({ expedientes, tareas, onCreate }: Props) {
+const today = new Date().toISOString().slice(0, 10);
+
+const DEFAULT_PARTE: ParteDTO = {
+  id: 0,                // valor dummy; el modal detecta "crear" si no hay id válido
+  fecha: today,
+  hora_inicio: null,
+  hora_fin: null,
+  expediente_id: null,
+  tarea_id: null,
+  descripcion: '',
+  comentario: '',
+};
+
+export default function ClientParteButtons({ expedientes, tareas, onCreated }: Props) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const DEFAULT_PARTE = {
-    id: 0,
-    expediente_id: null as number | null,
-    tarea_id: null as number | null,
-    fecha: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
-    hora_inicio: '08:00',
-    hora_fin: '09:00',
-    horas: 1,
-    comentario: '',
-  };
-
-  async function handleCreate(payload: any) {
+  async function handleCreate(payload: EditPartePayload) {
+    if (busy) return;
+    setBusy(true);
     try {
-      if (onCreate) await onCreate(payload);
-    } finally {
+      // Llama a la server action que ya recalcula horas y revalida
+      await createParteAction(payload as any);
+      onCreated?.();
       setOpen(false);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <>
+      {/* Botón flotante/primary para crear parte */}
       <button
         type="button"
-        aria-label="Nuevo parte"
-        onClick={() => setOpen(true)}
         className="btn btn-primary"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        onClick={() => setOpen(true)}
       >
-        <span>➕</span>
-        <span>Nuevo parte</span>
+        ➕ Nuevo parte
       </button>
 
+      {/* Modal de creación (sin prop title) */}
       <EditParteModal
         open={open}
         onClose={() => setOpen(false)}
         onSave={handleCreate}
-        title="Nuevo parte"
         expedientes={expedientes || []}
         tareas={tareas || []}
         parte={DEFAULT_PARTE}
