@@ -1,111 +1,76 @@
 // src/components/ClientParteButtons.tsx
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import EditParteModal from '@/components/EditParteModal';
 import DeleteParteDialog from '@/components/DeleteParteDialog';
 
-// Parte por defecto para modo "crear"
-const EMPTY_PARTE = {
-  id: 0,                            // no se usará al crear
-  expediente_id: null as number | null,
-  tarea_id: null as number | null,
-  fecha: new Date().toISOString().slice(0, 10), // YYYY-MM-DD de hoy
-  hora_inicio: '08:00:00',          // respeta tu granularidad de 15'
-  hora_fin: '08:15:00',             // respeta tu granularidad de 15'
-  horas: null as number | null,     // si tienes trigger, puede ir null
-  comentario: '',
+type ExpedienteRef = { id: number; codigo: string; proyecto?: string | null };
+type TareaRef = { id: number; titulo: string; expediente_id: number };
+
+type Props = {
+  /** listados que alimentan los select del modal */
+  expedientes: ExpedienteRef[];
+  tareas: TareaRef[];
+  /** callback opcional tras crear */
+  onCreate?: (payload: any) => Promise<void> | void;
 };
 
-type ExpedienteRef = { id: number; codigo: string };
-type TareaRef = { id: number; titulo: string };
-
-export default function ClientParteButtons({
-  mode,           // 'create' | 'edit' | 'delete'
-  parte,          // registro de parte (para edit/delete)
-  expedientes,    // lista para selects
-  tareas,         // lista para selects
-  onDone,         // callback para "refrescar" tras OK
-}: {
-  mode: 'create' | 'edit' | 'delete';
-  parte?: any;
-  expedientes?: ExpedienteRef[];
-  tareas?: TareaRef[];
-  onDone?: () => void;
-}) {
+/**
+ * Botón ➕ para crear partes (abre el modal).
+ * También mantiene el import de DeleteParteDialog por si este
+ * componente se usa en otra vista con acciones por fila.
+ */
+export default function ClientParteButtons({ expedientes, tareas, onCreate }: Props) {
   const [open, setOpen] = useState(false);
 
-  const handleCreate = async (payload: any) => {
-    // TODO: aquí añadiremos la llamada real a Supabase (insert)
-    console.log('create parte payload', payload);
-    setOpen(false);
-    onDone?.();
+  // Objeto por defecto que cumple la forma de ParteDTO
+  const DEFAULT_PARTE = {
+    id: 0,
+    expediente_id: null as number | null,
+    tarea_id: null as number | null,
+    // Fecha ISO YYYY-MM-DD para el <input type="date" />
+    fecha: new Date().toISOString().slice(0, 10),
+    // Valores iniciales alineados a 15 minutos
+    hora_inicio: '08:00',
+    hora_fin: '09:00',
+    horas: 1,
+    comentario: '',
   };
 
-  const handleEdit = async (payload: any) => {
-    // TODO: aquí añadiremos la llamada real a Supabase (update)
-    console.log('edit parte payload', payload);
-    setOpen(false);
-    onDone?.();
-  };
-
-  const handleDelete = async () => {
-    // TODO: aquí añadiremos la llamada real a Supabase (delete)
-    console.log('delete parte id', parte?.id);
-    setOpen(false);
-    onDone?.();
-  };
-
-  if (mode === 'create') {
-    return (
-      <>
-        <button className="icon-btn" title="Nuevo parte" onClick={() => setOpen(true)}>
-          ➕
-        </button>
-        <EditParteModal
-          open={open}
-          onClose={() => setOpen(false)}
-          onSubmit={handleCreate}
-          title="Nuevo parte"
-          expedientes={expedientes || []}
-          tareas={tareas || []}
-          parte={EMPTY_PARTE}
-        />
-      </>
-    );
+  async function handleCreate(payload: any) {
+    try {
+      if (onCreate) {
+        await onCreate(payload);
+      }
+    } finally {
+      setOpen(false);
+    }
   }
 
-  if (mode === 'edit') {
-    return (
-      <>
-        <button className="icon-btn" title="Editar parte" onClick={() => setOpen(true)}>
-          ✏️
-        </button>
-        <EditParteModal
-          open={open}
-          onClose={() => setOpen(false)}
-          onSubmit={handleEdit}
-          title="Editar parte"
-          expedientes={expedientes || []}
-          tareas={tareas || []}
-          parte={parte}
-        />
-      </>
-    );
-  }
-
-  // delete
   return (
     <>
-      <button className="icon-btn" title="Eliminar parte" onClick={() => setOpen(true)}>
-        🗑️
+      {/* Botón principal para abrir el modal de "Nuevo parte" */}
+      <button
+        type="button"
+        aria-label="Nuevo parte"
+        onClick={() => setOpen(true)}
+        className="btn btn-primary"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        <span>➕</span>
+        <span>Nuevo parte</span>
       </button>
-      <DeleteParteDialog
+
+      {/* Modal de creación */}
+      <EditParteModal
         open={open}
         onClose={() => setOpen(false)}
-        onConfirm={handleDelete}
-        title="Eliminar parte"
-        message="¿Seguro que quieres eliminar este parte?"
+        onSave={handleCreate}               {/* <— antes era onSubmit */}
+        title="Nuevo parte"
+        expedientes={expedientes || []}
+        tareas={tareas || []}
+        parte={DEFAULT_PARTE}               {/* <— antes era {} */}
       />
     </>
   );
