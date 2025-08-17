@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabaseServer';
 
-/* ----------------- Tipos de entrada ----------------- */
+/* ----------------- Tipos ----------------- */
 type NewTareaInput = {
   expediente_id: number;
   titulo: string;
@@ -13,10 +13,9 @@ type NewTareaInput = {
   estado?: string | null;
   descripcion?: string | null;
 };
-
 type UpdateTareaInput = NewTareaInput & { id: number };
 
-/* ----------------- Utilidades ----------------- */
+/* ----------------- Utils ----------------- */
 function strOrNull(v: FormDataEntryValue | null): string | null {
   const s = (v ?? '').toString().trim();
   return s === '' ? null : s;
@@ -45,9 +44,11 @@ function fdToUpdateTarea(fd: FormData): UpdateTareaInput {
   };
 }
 
-/* ----------------- Recalcular acumulados ----------------- */
-async function recalcHorasForTarea(supabase: ReturnType<typeof createClient>, tareaId: number) {
-  // Sumar horas de partes
+/* -------- Recalcular acumulados (tarea + expediente) -------- */
+async function recalcHorasForTarea(
+  supabase: ReturnType<typeof createClient>,
+  tareaId: number
+) {
   const { data: partes } = await supabase
     .from('partes')
     .select('hora_inicio,hora_fin')
@@ -63,7 +64,6 @@ async function recalcHorasForTarea(supabase: ReturnType<typeof createClient>, ta
   }
   await supabase.from('tareas').update({ horas_realizadas: totalHoras }).eq('id', tareaId);
 
-  // Actualizar acumulado del expediente
   const { data: tareaRow } = await supabase
     .from('tareas')
     .select('expediente_id')
@@ -85,7 +85,7 @@ async function recalcHorasForTarea(supabase: ReturnType<typeof createClient>, ta
   }
 }
 
-/* ----------------- Acciones (aceptan objeto o FormData) ----------------- */
+/* ----------------- Acciones CRUD ----------------- */
 export async function createTarea(input: NewTareaInput | FormData) {
   const supabase = createClient();
   const payload: NewTareaInput = input instanceof FormData ? fdToNewTarea(input) : input;
@@ -151,5 +151,49 @@ export async function updateTarea(input: UpdateTareaInput | FormData) {
   return { ok: true as const, id: Number(payload.id), message: null, error: null };
 }
 
-/* Aliases por compatibilidad si en algún sitio se usan estos nombres */
-export { createTarea as createTareaAction, updateTarea as updateTareaAction };
+export async function deleteTarea(input: number | FormData) {
+  const supabase = createClient();
+  const id = input instanceof FormData ? Number(input.get('id') ?? 0) : Number(input);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false as const, id: null, message: 'ID inválido', error: 'ID inválido' };
+  }
+
+  const { data: tareaRow } = await supabase
+    .from('tareas')
+    .select('id,expediente_id')
+    .eq('id', id)
+    .single();
+
+  const expedienteId = tareaRow?.expediente_id as number | undefined;
+
+  await supabase.from('partes').delete().eq('tarea_id', id);
+  const { error } = await supabase.from('tareas').delete().eq('id', id);
+  if (error) {
+    const message = error.message ?? 'Error al borrar tarea';
+    return { ok: false as const, id, message, error: message };
+  }
+
+  if (expedienteId) {
+    const { data: tareasExp } = await supabase
+      .from('tareas')
+      .select('horas_realizadas')
+      .eq('expediente_id', expedienteId);
+
+    const sumExp = (tareasExp ?? []).reduce(
+      (acc: number, t: any) => acc + (Number(t?.horas_realizadas ?? 0) || 0),
+      0
+    );
+    await supabase.from('expedientes').update({ horas_realizadas: sumExp }).eq('id', expedienteId);
+  }
+
+  revalidatePath('/tareas');
+  revalidatePath('/expedientes');
+  revalidatePath('/partes');
+
+  return { ok: true as const, id, message: null, error: null };
+}
+
+/* -------- Aliases de compatibilidad con imports existentes -------- */
+export const createTareaAction = createTarea;
+export const updateTareaAction = updateTarea;
+export const deleteTareaAction = deleteTarea;
