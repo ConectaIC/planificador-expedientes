@@ -1,17 +1,19 @@
+// src/components/ExpedienteRowActions.tsx
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState } from 'react';
 import Modal from '@/components/Modal';
 import { updateExpedienteAction, deleteExpedienteAction } from '@/app/expedientes/actions';
 
-export type Expediente = {
+type Expediente = {
   id: number;
   codigo: string;
-  proyecto: string | null;
-  cliente: string | null;
-  prioridad: string | null;
-  estado: string | null;
-  fin: string | null;
+  proyecto?: string | null;
+  horas_previstas?: number | null;
+  horas_realizadas?: number | null;
+  estado?: string | null;
+  prioridad?: string | null;
+  vencimiento?: string | null; // YYYY-MM-DD
 };
 
 type Props = {
@@ -23,159 +25,190 @@ type Props = {
 export default function ExpedienteRowActions({ expediente, onUpdate, onDelete }: Props) {
   const [openEdit, setOpenEdit] = useState(false);
   const [openDel, setOpenDel] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
-  const submitEdit = async (e: FormEvent<HTMLFormElement>) => {
+  // Estado local del formulario de edición
+  const [form, setForm] = useState<Expediente>({
+    id: expediente.id,
+    codigo: expediente.codigo,
+    proyecto: expediente.proyecto ?? '',
+    horas_previstas: expediente.horas_previstas ?? null,
+    horas_realizadas: expediente.horas_realizadas ?? null,
+    estado: expediente.estado ?? '',
+    prioridad: expediente.prioridad ?? '',
+    vencimiento: expediente.vencimiento ?? '',
+  });
+
+  function update<K extends keyof Expediente>(k: K, v: Expediente[K]) {
+    setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    setBusy(true);
-    setErr(null);
-    try {
-      await updateExpedienteAction(fd);
-      setOpenEdit(false);
-      onUpdate?.();
-    } catch (ex: any) {
-      setErr(ex?.message ?? 'Error al guardar');
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  const confirmDelete = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      const fd = new FormData();
-      fd.set('id', String(expediente.id));
-      await deleteExpedienteAction(fd);
-      setOpenDel(false);
-      onDelete?.();
-    } catch (ex: any) {
-      setErr(ex?.message ?? 'Error al borrar');
-    } finally {
-      setBusy(false);
-    }
-  };
+    const fd = new FormData();
+    fd.set('id', String(form.id));
+    fd.set('codigo', (form.codigo || '').trim());
+    fd.set('proyecto', (form.proyecto || '').toString());
+    if (form.horas_previstas != null) fd.set('horas_previstas', String(form.horas_previstas));
+    if (form.horas_realizadas != null) fd.set('horas_realizadas', String(form.horas_realizadas));
+    fd.set('estado', (form.estado || '').toString());
+    fd.set('prioridad', (form.prioridad || '').toString());
+    fd.set('vencimiento', (form.vencimiento || '').toString());
+
+    await updateExpedienteAction(fd);
+    setOpenEdit(false);
+    onUpdate?.();
+  }
+
+  async function confirmDelete() {
+    // 🔧 Antes se creaba un FormData; ahora pasamos el number que espera la acción.
+    await deleteExpedienteAction(expediente.id);
+    setOpenDel(false);
+    onDelete?.();
+  }
 
   return (
-    <div className="flex items-center gap-2 justify-center">
+    <div className="inline-flex items-center gap-2">
+      {/* Botón editar */}
       <button
         type="button"
-        className="rounded-md border px-2 py-1 hover:bg-gray-50"
-        title="Editar"
-        onClick={() => setOpenEdit(true)}
+        className="btn btn-secondary btn-sm"
+        aria-label="Editar expediente"
+        onClick={() => {
+          // refrescamos el form por si el padre lo actualizó
+          setForm({
+            id: expediente.id,
+            codigo: expediente.codigo,
+            proyecto: expediente.proyecto ?? '',
+            horas_previstas: expediente.horas_previstas ?? null,
+            horas_realizadas: expediente.horas_realizadas ?? null,
+            estado: expediente.estado ?? '',
+            prioridad: expediente.prioridad ?? '',
+            vencimiento: expediente.vencimiento ?? '',
+          });
+          setOpenEdit(true);
+        }}
       >
         ✏️
       </button>
+
+      {/* Botón borrar */}
       <button
         type="button"
-        className="rounded-md border px-2 py-1 hover:bg-gray-50"
-        title="Borrar"
+        className="btn btn-danger btn-sm"
+        aria-label="Eliminar expediente"
         onClick={() => setOpenDel(true)}
       >
         🗑️
       </button>
 
-      {/* Editar */}
-      <Modal
-        open={openEdit}
-        onClose={() => setOpenEdit(false)}
-        title={`Editar ${expediente.codigo}`}
-        widthClass="max-w-xl"
-      >
+      {/* Modal de edición */}
+      <Modal open={openEdit} onClose={() => setOpenEdit(false)} title={`Editar ${expediente.codigo}`}>
         <form onSubmit={submitEdit} className="space-y-3">
-          <input type="hidden" name="id" value={expediente.id} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">Código</span>
-              <input
-                name="codigo"
-                defaultValue={expediente.codigo}
-                className="rounded-md border px-3 py-2"
-                required
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">Cliente</span>
-              <input
-                name="cliente"
-                defaultValue={expediente.cliente ?? ''}
-                className="rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="md:col-span-2 flex flex-col gap-1">
-              <span className="text-sm">Proyecto</span>
-              <input
-                name="proyecto"
-                defaultValue={expediente.proyecto ?? ''}
-                className="rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">Prioridad</span>
-              <input
-                name="prioridad"
-                defaultValue={expediente.prioridad ?? ''}
-                className="rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">Estado</span>
-              <input
-                name="estado"
-                defaultValue={expediente.estado ?? ''}
-                className="rounded-md border px-3 py-2"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">Fin (AAAA-MM-DD)</span>
-              <input
-                name="fin"
-                defaultValue={expediente.fin ?? ''}
-                placeholder="2025-12-31"
-                className="rounded-md border px-3 py-2"
-              />
-            </label>
+          <input type="hidden" name="id" value={form.id} />
+
+          <div className="form-row">
+            <label className="form-label">Código</label>
+            <input
+              className="form-input"
+              value={form.codigo}
+              onChange={(e) => update('codigo', e.target.value)}
+              required
+            />
           </div>
 
-          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="form-row">
+            <label className="form-label">Proyecto</label>
+            <input
+              className="form-input"
+              value={form.proyecto ?? ''}
+              onChange={(e) => update('proyecto', e.target.value)}
+            />
+          </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setOpenEdit(false)} className="rounded-md border px-3 py-2">
+          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="form-label">Horas previstas</label>
+              <input
+                type="number"
+                step="0.25"
+                min="0"
+                className="form-input"
+                value={form.horas_previstas ?? ''}
+                onChange={(e) =>
+                  update('horas_previstas', e.target.value === '' ? null : Number(e.target.value))
+                }
+              />
+            </div>
+            <div>
+              <label className="form-label">Horas realizadas</label>
+              <input
+                type="number"
+                step="0.25"
+                min="0"
+                className="form-input"
+                value={form.horas_realizadas ?? ''}
+                onChange={(e) =>
+                  update('horas_realizadas', e.target.value === '' ? null : Number(e.target.value))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="form-label">Estado</label>
+              <input
+                className="form-input"
+                value={form.estado ?? ''}
+                onChange={(e) => update('estado', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="form-label">Prioridad</label>
+              <input
+                className="form-input"
+                value={form.prioridad ?? ''}
+                onChange={(e) => update('prioridad', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <label className="form-label">Vencimiento</label>
+            <input
+              type="date"
+              className="form-input"
+              value={form.vencimiento ?? ''}
+              onChange={(e) => update('vencimiento', e.target.value)}
+            />
+          </div>
+
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setOpenEdit(false)}>
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-md bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {busy ? 'Guardando…' : 'Guardar'}
+            <button type="submit" className="btn btn-primary">
+              Guardar
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Borrar */}
-      <Modal
-        open={openDel}
-        onClose={() => setOpenDel(false)}
-        title={`Borrar ${expediente.codigo}`}
-      >
-        <p className="mb-3">¿Seguro que quieres borrar este expediente? Esta acción no se puede deshacer.</p>
-        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setOpenDel(false)} className="rounded-md border px-3 py-2">
-            Cancelar
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={confirmDelete}
-            className="rounded-md bg-red-600 px-3 py-2 text-white hover:bg-red-700 disabled:opacity-50"
-          >
-            {busy ? 'Borrando…' : 'Borrar'}
-          </button>
+      {/* Modal de confirmación de borrado */}
+      <Modal open={openDel} onClose={() => setOpenDel(false)} title="Eliminar expediente">
+        <div className="space-y-4">
+          <p>
+            ¿Seguro que quieres eliminar el expediente <strong>{expediente.codigo}</strong>?
+          </p>
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setOpenDel(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-danger" onClick={confirmDelete}>
+              Eliminar
+            </button>
+          </div>
         </div>
       </Modal>
     </div>
