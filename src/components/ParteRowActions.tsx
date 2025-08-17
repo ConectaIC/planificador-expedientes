@@ -1,83 +1,45 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import NewParteModal, { NewPartePayload } from "@/components/NewParteModal";
-import EditParteModal, { ParteDTO, EditPartePayload } from "@/components/EditParteModal";
+import { useState } from 'react';
+import EditParteModal, { type EditPartePayload } from '@/components/EditParteModal';
+import type { ExpedienteRef, TareaRef, ParteDTO } from '@/types';
 
-type ExpedienteRef = { id: number; codigo: string; proyecto?: string | null };
-type TareaRef = { id: number; titulo: string };
-
-export default function ParteRowActions({
-  parte,
-  expedientes,
-  tareas,
-  onCreate,
-  onSave,
-  onDelete,
-}: {
-  parte?: ParteDTO; // si hay parte -> muestra acciones de editar/borrar, si no -> solo “nuevo”
+type Props = {
+  parte: ParteDTO;
   expedientes: ExpedienteRef[];
-  tareas: TareaRef[];
-  onCreate: (p: NewPartePayload) => Promise<void> | void;
+  tareas: TareaRef[]; // <- mismos tipos compartidos
   onSave: (p: EditPartePayload) => Promise<void> | void;
-  onDelete: (id: ParteDTO["id"]) => Promise<void> | void;
-}) {
-  const [openNew, setOpenNew] = useState(false);
+};
+
+export default function ParteRowActions({ parte, expedientes, tareas, onSave }: Props) {
   const [openEdit, setOpenEdit] = useState(false);
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Nuevo */}
-      {!parte ? (
-        <>
-          <button
-            type="button"
-            className="icon-btn"
-            title="Nuevo parte"
-            onClick={() => setOpenNew(true)}
-          >
-            ➕
-          </button>
-          <NewParteModal
-            open={openNew}
-            onClose={() => setOpenNew(false)}
-            expedientes={expedientes}
-            tareas={tareas}
-            onCreate={onCreate}
-          />
-        </>
-      ) : (
-        <>
-          {/* Editar */}
-          <button
-            type="button"
-            className="icon-btn"
-            title="Editar parte"
-            onClick={() => setOpenEdit(true)}
-          >
-            ✏️
-          </button>
+    <>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          className="icon-btn"
+          title="Editar parte"
+          onClick={() => setOpenEdit(true)}
+        >
+          ✏️
+        </button>
+        {/* Si tienes borrar, añádelo aquí */}
+      </div>
 
-          {/* Borrar */}
-          <button
-            type="button"
-            className="icon-btn"
-            title="Eliminar parte"
-            onClick={() => onDelete(parte.id)}
-          >
-            🗑️
-          </button>
-
-          <EditParteModal
-            open={openEdit}
-            onClose={() => setOpenEdit(false)}
-            parte={parte}
-            expedientes={expedientes}
-            tareas={tareas}
-            onSave={onSave}
-          />
-        </>
-      )}
-    </div>
+      {/* Modal edición */}
+      <EditParteModal
+        open={openEdit}
+        onClose={() => setOpenEdit(false)}
+        parte={parte}
+        expedientes={expedientes}
+        tareas={tareas}
+        onSave={async (payload) => {
+          await onSave(payload);
+          setOpenEdit(false);
+        }}
+      />
+    </>
   );
 }
