@@ -4,185 +4,84 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabaseServer';
 
-/** Convierte "HH:MM" o "HH:MM:SS" a minutos enteros */
-function parseTimeToMinutes(t: unknown): number {
-  if (typeof t !== 'string' || !t) return NaN;
-  const [hh, mm, ss] = t.split(':').map((x) => Number(x));
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
-  const s = Number.isFinite(ss) ? ss : 0;
-  return hh * 60 + mm + s / 60;
-}
+type InsertParte = {
+  fecha: string;                      // 'YYYY-MM-DD'
+  hora_inicio?: string | null;        // 'HH:MM' o ISO, según envíe tu form
+  hora_fin?: string | null;           // 'HH:MM' o ISO, según envíe tu form
+  expediente_id?: number | null;
+  tarea_id?: number | null;
+  descripcion?: string | null;
+  comentario?: string | null;
+};
 
-/** Suma horas de todas las partes de una tarea y actualiza tareas.horas_realizadas */
-async function recalcHorasForTarea(tareaId: number) {
-  if (!Number.isFinite(tareaId)) return;
-  const supabase = createClient();
-
+/**
+ * Recalcula horas_realizadas de una tarea sumando la duración de sus partes.
+ * Mantén la firma exacta (supabase:any, tareaId:number) para evitar el error de '{}' -> number.
+ */
+export async function recalcHorasForTarea(supabase: any, tareaId: number) {
   const { data: partes, error } = await supabase
     .from('partes')
-    .select('horas, hora_inicio, hora_fin')
+    .select('hora_inicio,hora_fin')
     .eq('tarea_id', tareaId);
 
   if (error) throw new Error(error.message);
 
-  const total = (partes ?? []).reduce((acc, p: any) => {
-    if (typeof p.horas === 'number' && Number.isFinite(p.horas)) {
-      return acc + p.horas; // preferimos el valor del trigger si existe
-    }
-    const ini = parseTimeToMinutes(p.hora_inicio);
-    const fin = parseTimeToMinutes(p.hora_fin);
+  let total = 0;
+  for (const p of partes ?? []) {
+    // Convertimos de forma segura a Date (acepta ISO o 'YYYY-MM-DDTHH:mm')
+    const ini = p.hora_inicio ? new Date(p.hora_inicio as any).getTime() : NaN;
+    const fin = p.hora_fin ? new Date(p.hora_fin as any).getTime() : NaN;
     if (Number.isFinite(ini) && Number.isFinite(fin) && fin > ini) {
-      return acc + (fin - ini) / 60; // minutos -> horas
+      total += (fin - ini) / 1000 / 3600;
     }
-    return acc;
-  }, 0);
+  }
 
-  const { error: up } = await supabase
+  const { error: upErr } = await supabase
     .from('tareas')
     .update({ horas_realizadas: total })
     .eq('id', tareaId);
 
-  if (up) throw new Error(up.message);
+  if (upErr) throw new Error(upErr.message);
 }
 
-/** Suma horas de todas las partes de un expediente y actualiza expedientes.horas_imputadas */
-async function recalcHorasForExpediente(expedienteId: number) {
-  if (!Number.isFinite(expedienteId)) return;
-  const supabase = createClient();
-
-  const { data: partes, error } = await supabase
-    .from('partes')
-    .select('horas, hora_inicio, hora_fin')
-    .eq('expediente_id', expedienteId);
-
-  if (error) throw new Error(error.message);
-
-  const total = (partes ?? []).reduce((acc, p: any) => {
-    if (typeof p.horas === 'number' && Number.isFinite(p.horas)) {
-      return acc + p.horas;
-    }
-    const ini = parseTimeToMinutes(p.hora_inicio);
-    const fin = parseTimeToMinutes(p.hora_fin);
-    if (Number.isFinite(ini) && Number.isFinite(fin) && fin > ini) {
-      return acc + (fin - ini) / 60;
-    }
-    return acc;
-  }, 0);
-
-  // ATENCIÓN: si tu columna no se llama "horas_imputadas", dime el nombre exacto y te lo cambio
-  const { error: up } = await supabase
-    .from('expedientes')
-    .update({ horas_imputadas: total })
-    .eq('id', expedienteId);
-
-  if (up) throw new Error(up.message);
-}
-
-/* =====================  ACCIONES CRUD  ===================== */
-
+/**
+ * Server Action para crear un parte desde un <form action={createParte}> en componentes cliente.
+ * Lee los campos desde FormData, inserta y revalida la página de partes.
+ */
 export async function createParteAction(fd: FormData) {
   const supabase = createClient();
 
-  const payload = {
-    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
-    tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
-    fecha: (fd.get('fecha') as string) || null,
+  const payload: InsertParte = {
+    fecha: String(fd.get('fecha') || '').slice(0, 10),
     hora_inicio: (fd.get('hora_inicio') as string) || null,
     hora_fin: (fd.get('hora_fin') as string) || null,
-    horas: fd.get('horas') ? Number(fd.get('horas')) : null, // si usas trigger, esto puede ir null
+    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
+    tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
+    descripcion: (fd.get('descripcion') as string) || null,
     comentario: (fd.get('comentario') as string) || null,
   };
 
   const { data, error } = await supabase
     .from('partes')
     .insert(payload)
-    .select('id, expediente_id, tarea_id')
+    .select('id, tarea_id')
     .single();
 
   if (error) throw new Error(error.message);
 
-  // Recalcular acumulados de forma segura con cast numérico
-  const tareaId = Number(data?.tarea_id);
-  if (Number.isFinite(tareaId)) await recalcHorasForTarea(tareaId);
+  // Recalcula acumulados si el parte está vinculado a una tarea
+  if (data?.tarea_id != null) {
+    await recalcHorasForTarea(supabase, Number(data.tarea_id));
+  }
 
-  const expedienteId = Number(data?.expediente_id);
-  if (Number.isFinite(expedienteId)) await recalcHorasForExpediente(expedienteId);
-
+  // Revalida lista
   revalidatePath('/partes');
-  revalidatePath('/tareas');
-  revalidatePath('/expedientes');
+
+  return { ok: true, id: data?.id ?? null };
 }
 
-export async function updateParteAction(fd: FormData) {
-  const supabase = createClient();
-
-  const id = Number(fd.get('id'));
-  if (!Number.isFinite(id)) throw new Error('ID de parte inválido');
-
-  const patch: Record<string, any> = {
-    expediente_id: fd.get('expediente_id') ? Number(fd.get('expediente_id')) : null,
-    tarea_id: fd.get('tarea_id') ? Number(fd.get('tarea_id')) : null,
-    fecha: (fd.get('fecha') as string) || null,
-    hora_inicio: (fd.get('hora_inicio') as string) || null,
-    hora_fin: (fd.get('hora_fin') as string) || null,
-    horas: fd.get('horas') ? Number(fd.get('horas')) : null,
-    comentario: (fd.get('comentario') as string) || null,
-  };
-
-  // Necesitamos los antiguos valores para saber qué recalcular si cambian las relaciones
-  const { data: prev } = await supabase
-    .from('partes')
-    .select('expediente_id, tarea_id')
-    .eq('id', id)
-    .single();
-
-  const { data, error } = await supabase
-    .from('partes')
-    .update(patch)
-    .eq('id', id)
-    .select('expediente_id, tarea_id')
-    .single();
-
-  if (error) throw new Error(error.message);
-
-  const idsTarea = [
-    Number(prev?.tarea_id),
-    Number(data?.tarea_id),
-  ].filter((x) => Number.isFinite(x)) as number[];
-
-  const idsExp = [
-    Number(prev?.expediente_id),
-    Number(data?.expediente_id),
-  ].filter((x) => Number.isFinite(x)) as number[];
-
-  for (const t of Array.from(new Set(idsTarea))) await recalcHorasForTarea(t);
-  for (const e of Array.from(new Set(idsExp))) await recalcHorasForExpediente(e);
-
-  revalidatePath('/partes');
-  revalidatePath('/tareas');
-  revalidatePath('/expedientes');
-}
-
-export async function deleteParteAction(id: number) {
-  const supabase = createClient();
-
-  // Leer relaciones antes de borrar
-  const { data: prev } = await supabase
-    .from('partes')
-    .select('expediente_id, tarea_id')
-    .eq('id', id)
-    .single();
-
-  const { error } = await supabase.from('partes').delete().eq('id', id);
-  if (error) throw new Error(error.message);
-
-  const tareaId = Number(prev?.tarea_id);
-  if (Number.isFinite(tareaId)) await recalcHorasForTarea(tareaId);
-
-  const expedienteId = Number(prev?.expediente_id);
-  if (Number.isFinite(expedienteId)) await recalcHorasForExpediente(expedienteId);
-
-  revalidatePath('/partes');
-  revalidatePath('/tareas');
-  revalidatePath('/expedientes');
-}
+/**
+ * 🔗 Alias para mantener compatibilidad con tu import en ParteForm:
+ *   import { createParte } from '../app/partes/actions'
+ */
+export { createParteAction as createParte };
